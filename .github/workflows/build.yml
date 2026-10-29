@@ -1,0 +1,60 @@
+# Builds VidLift-Setup.exe and VidLift.dmg when a desktop-v* tag is pushed,
+# and puts them on that tag's release. The stable links members get point at
+# the newest release:
+#   https://github.com/vidlift-app/vidlift-desktop/releases/latest/download/VidLift-Setup.exe
+#   https://github.com/vidlift-app/vidlift-desktop/releases/latest/download/VidLift.dmg
+
+name: Build installers
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            dist: dist:win
+            file: release/VidLift-Setup.exe
+          - os: macos-latest
+            dist: dist:mac
+            file: release/VidLift.dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The tests run from the compiled files.
+      - run: npm run build:main
+
+      - run: npm test
+
+      - run: npm run ${{ matrix.dist }}
+
+      - name: Upload to the tag's release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Both jobs may get here at once: one creates it, the other carries on.
+            # A pre-release until tools/release.py lists it: Beta keeps it one,
+            # Stable (publish --channel stable, or promote) makes it the latest,
+            # so releases/latest/download only ever serves Stable's installers.
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "VidLift desktop ${tag#desktop-v}" --notes "" --prerelease || true
+          fi
+          gh release upload "$tag" "${{ matrix.file }}" --repo "$GITHUB_REPOSITORY" --clobber

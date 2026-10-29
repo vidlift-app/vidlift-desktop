@@ -1,0 +1,62 @@
+# VidLift's installers: VidLift-Setup.exe (Windows, per-user, no admin) and
+# VidLift.dmg (Mac, universal, ad-hoc signed). Built by
+# .github/workflows/build.yml on a desktop-v* tag; locally with
+# `npm run dist:win` / `npm run dist:mac`.
+
+appId: io.vidlift.app
+productName: VidLift
+copyright: Copyright © VidLift
+
+directories:
+  buildResources: build
+  output: release
+
+files:
+  - dist/**
+  - "!dist/**/*.map"
+  - "!dist/main/*.test.js"
+  - package.json
+  # build/ is not packed by default: the tray icons are read at run time.
+  - build/tray.png
+  - build/tray@2x.png
+
+icon: build/icon.png
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+
+nsis:
+  oneClick: true
+  perMachine: false
+  artifactName: VidLift-Setup.${ext}
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: VidLift
+  runAfterFinish: true
+  # The shell's own small files (userData "VidLift Desktop") stay; the
+  # payload (app/ runtime/ user/) is never inside the shell's folder.
+  deleteAppDataOnUninstall: false
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - universal
+  category: public.app-category.video
+  icon: build/icon-mac.png
+  # No Developer ID. "-" makes electron-builder ad-hoc sign the .app
+  # (@electron/osx-sign with identity "-"), which Apple Silicon needs to run
+  # it at all; null would skip signing and leave the universal binary's
+  # signature broken. Members open it once with System Settings > Open Anyway.
+  identity: "-"
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  notarize: false
+
+dmg:
+  artifactName: VidLift.${ext}
