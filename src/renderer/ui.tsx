@@ -70,7 +70,23 @@ export function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boo
   return <button type="button" role="switch" aria-checked={on} aria-label={label} className={`switch${on ? " on" : ""}`} onClick={() => onChange(!on)} />;
 }
 
-export function SecretInput({ value, onChange, id, placeholder }: { value: string; onChange: (v: string) => void; id: string; placeholder?: string }) {
+export function SecretInput({
+  value,
+  onChange,
+  id,
+  placeholder,
+  onBlur,
+  onPaste,
+  label,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  id: string;
+  placeholder?: string;
+  onBlur?: () => void;
+  onPaste?: () => void;
+  label?: string;
+}) {
   const [show, setShow] = useState(false);
   return (
     <div className="secret">
@@ -80,9 +96,12 @@ export function SecretInput({ value, onChange, id, placeholder }: { value: strin
         type={show ? "text" : "password"}
         value={value}
         placeholder={placeholder}
+        aria-label={label}
         autoComplete="off"
         spellCheck={false}
         onChange={(e) => onChange(e.target.value.trim())}
+        onBlur={onBlur}
+        onPaste={onPaste}
       />
       <button type="button" className="eye" aria-label={show ? "Hide key" : "Show key"} title={show ? "Hide" : "Show"} onClick={() => setShow(!show)}>
         {show ? <IconEyeOff /> : <IconEye />}

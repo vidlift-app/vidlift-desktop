@@ -1,6 +1,20 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { DeviceCode, FolderCheck, InstallPlan, InstallProgress, LicenseResult, OldInstall } from "../shared/types";
-import { ALWAYS, API_KEYS, INSTALL_STEPS, PART_GROUPS, URLS, formatKey, gb, keyComplete } from "./data";
+import type { DeviceCode, FolderCheck, InstallPlan, InstallProgress, KeyCheck, LicenseResult, OldInstall, VoicePlan } from "../shared/types";
+import {
+  ALWAYS,
+  FOOTAGE_KEYS,
+  INSTALL_STEPS,
+  PART_GROUPS,
+  URLS,
+  VOICE_ENGINES,
+  WRITING_KEY,
+  WRITING_OTHER,
+  formatKey,
+  gb,
+  keyComplete,
+  partsForVoice,
+  type KeyRow,
+} from "./data";
 import {
   GlyphDone,
   GlyphFailed,
@@ -9,6 +23,7 @@ import {
   IconAlert,
   IconArrowLeft,
   IconCheck,
+  IconChevron,
   IconChip,
   IconCopy,
   IconDrive,
@@ -19,8 +34,8 @@ import {
   IconPlay,
   IconRetry,
 } from "./icons";
-import { Button, Checkbox, Details, Progress, SecretInput, Switch, WaitLine, markUrl } from "./ui";
-import type { StepProps } from "./wizard-types";
+import { Button, Checkbox, Details, Progress, SecretInput, Spinner, Switch, WaitLine, markUrl } from "./ui";
+import type { Draft, StepProps } from "./wizard-types";
 
 const api = window.vidlift;
 
@@ -522,7 +537,7 @@ export function ImportStep({ draft, update, go, back }: StepProps) {
       title="Your old VidLift"
       left={<BackButton onClick={back} />}
       right={
-        <Button variant="primary" disabled={!ready} onClick={() => go("parts", draft.oldChoice === "first" ? { oldFolder: null } : {})}>
+        <Button variant="primary" disabled={!ready} onClick={() => go("ai", draft.oldChoice === "first" ? { oldFolder: null } : {})}>
           Continue
         </Button>
       }
@@ -563,7 +578,233 @@ export function ImportStep({ draft, update, go, back }: StepProps) {
   );
 }
 
-/* ------------------------------------------------------------ 6. parts */
+/* ------------------------------------------------------------ 6. set up AI */
+
+/** Each key's last answer, by variable, for the value it was asked about:
+ * coming back to this step shows it again without asking twice. */
+const checked = new Map<string, { value: string; result: KeyCheck }>();
+
+type KeyStatus = KeyCheck | "checking" | null;
+
+function KeyChip({ status }: { status: KeyStatus }) {
+  if (!status) return null;
+  if (status === "checking") {
+    return (
+      <span className="kchip" role="status">
+        <Spinner />
+        Checking…
+      </span>
+    );
+  }
+  if (status.state === "ok") {
+    return (
+      <span className="kchip ok" role="status" title={status.message}>
+        <IconCheck />
+        Works
+      </span>
+    );
+  }
+  if (status.state === "bad") {
+    return (
+      <span className="kchip bad" role="status" title={status.message}>
+        <IconAlert />
+        Not accepted
+      </span>
+    );
+  }
+  return (
+    <span className="kchip saved" role="status" title={status.message}>
+      Saved
+    </span>
+  );
+}
+
+/** One key: its name and signup link, the field, and whether it works. The
+ * check runs 600 ms after the field is left or a key is pasted in. */
+function KeyField({
+  row,
+  value,
+  onChange,
+  linkText = "Get a key",
+  fact,
+}: {
+  row: KeyRow;
+  value: string;
+  onChange: (v: string) => void;
+  linkText?: string;
+  fact?: string;
+}) {
+  const [status, setStatus] = useState<KeyStatus>(() => {
+    const c = checked.get(row.env);
+    return value && c && c.value === value ? c.result : null;
+  });
+  const timer = useRef<number>(undefined);
+  const pasted = useRef(false);
+  const current = useRef(value);
+  current.current = value;
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const schedule = (v: string) => {
+    window.clearTimeout(timer.current);
+    if (!v) return setStatus(null);
+    const c = checked.get(row.env);
+    if (c && c.value === v) return setStatus(c.result);
+    timer.current = window.setTimeout(async () => {
+      setStatus("checking");
+      let result: KeyCheck;
+      try {
+        result = await api.testKey(row.env, v);
+      } catch {
+        result = { state: "unchecked", message: "Couldn't check right now" };
+      }
+      checked.set(row.env, { value: v, result });
+      if (current.current === v) setStatus(result);
+    }, 600);
+  };
+
+  const id = `key-${row.env}`;
+  return (
+    <div className="krow">
+      <div className="krow-label">
+        <label htmlFor={id} title={row.env}>
+          {row.label}
+        </label>
+        <button type="button" className="klink" onClick={() => void api.openExternal(row.url)}>
+          {linkText}
+          <IconExternal />
+        </button>
+      </div>
+      <SecretInput
+        id={id}
+        value={value}
+        onChange={(v) => {
+          onChange(v);
+          if (pasted.current) {
+            pasted.current = false;
+            schedule(v);
+          } else if (v !== value) {
+            window.clearTimeout(timer.current);
+            setStatus(null);
+          }
+        }}
+        onPaste={() => {
+          pasted.current = true;
+        }}
+        onBlur={() => schedule(current.current)}
+      />
+      <div className="krow-chip">
+        <KeyChip status={status} />
+      </div>
+      {fact && <div className="krow-fact">{fact}</div>}
+    </div>
+  );
+}
+
+export function AiStep({ draft, update, go, back }: StepProps) {
+  const keys = draft.keys;
+  const voice = draft.voice;
+  const [others, setOthers] = useState(() => WRITING_OTHER.some((k) => keys[k.env]));
+  const engine = VOICE_ENGINES.find((e) => e.id === voice.engine) ?? VOICE_ENGINES[0];
+
+  const setKey = (env: string, v: string) => {
+    const next = { ...keys };
+    if (v) next[env] = v;
+    else delete next[env];
+    update({ keys: next });
+  };
+  const field = (row: KeyRow, extra: { linkText?: string; fact?: string } = {}) => (
+    <KeyField key={row.env} row={row} value={keys[row.env] ?? ""} onChange={(v) => setKey(row.env, v)} {...extra} />
+  );
+  const setVoice = (v: VoicePlan) => update({ voice: v });
+  // The voice picks the Parts page's ticks: Kokoro for the local voice.
+  const next = (v: VoicePlan, patch: Partial<Draft> = {}) => go("parts", { ...patch, voice: v, parts: partsForVoice(draft.parts, v.mode) });
+
+  const option = (mode: "local" | "online", name: string, desc: string) => (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={voice.mode === mode}
+      className={`vopt${voice.mode === mode ? " on" : ""}`}
+      onClick={() => setVoice(mode === "local" ? { mode, engine: voice.engine } : { mode, engine: engine.id })}
+    >
+      <span className="radio" />
+      <span className="vopt-text">
+        <span className="vopt-name">{name}</span>
+        <span className="vopt-desc">{desc}</span>
+      </span>
+    </button>
+  );
+
+  return (
+    <Page
+      title="Set up AI"
+      sub={<span className="muted">Keys stay on this computer. Add or change them any time in Settings › API keys.</span>}
+      left={<BackButton onClick={back} />}
+      right={
+        <>
+          <Button onClick={() => next({ mode: "local" }, { keys: {} })}>Do this later</Button>
+          <Button variant="primary" onClick={() => next(voice.mode === "online" ? { mode: "online", engine: engine.id } : { mode: "local" })}>
+            Continue
+          </Button>
+        </>
+      }
+    >
+      <div className="section stack">
+        <section className="card acard" aria-labelledby="ai-writing">
+          <div className="acard-head">
+            <h2 id="ai-writing">Writing and planning</h2>
+            <span className="tag">Recommended</span>
+          </div>
+          {field(WRITING_KEY, { linkText: "Get a free key" })}
+          <button type="button" className={`toggle-link${others ? " open" : ""}`} aria-expanded={others} onClick={() => setOthers(!others)}>
+            <IconChevron />
+            Use another provider
+          </button>
+          {others && <div className="acard-more">{WRITING_OTHER.map((k) => field(k))}</div>}
+        </section>
+
+        <section className="card acard" aria-labelledby="ai-voice">
+          <div className="acard-head">
+            <h2 id="ai-voice">Voice</h2>
+            <span className="tag">Recommended</span>
+          </div>
+          <div className="vopts" role="radiogroup" aria-label="Voice">
+            {option("local", "Local voice", "Free, runs on this computer · Kokoro · about 400 MB")}
+            {option("online", "Online voice", "Your own account with a voice provider")}
+          </div>
+          {voice.mode === "online" && (
+            <>
+              <div className="seg" role="radiogroup" aria-label="Voice provider">
+                {VOICE_ENGINES.map((e) => (
+                  <button
+                    key={e.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={e.id === engine.id}
+                    className={`seg-opt${e.id === engine.id ? " on" : ""}`}
+                    onClick={() => setVoice({ mode: "online", engine: e.id })}
+                  >
+                    {e.label}
+                  </button>
+                ))}
+              </div>
+              {field(engine.key)}
+            </>
+          )}
+        </section>
+
+        <section className="card acard" aria-labelledby="ai-footage">
+          <div className="acard-head">
+            <h2 id="ai-footage">Footage</h2>
+          </div>
+          {FOOTAGE_KEYS.map((k) => field(k, { fact: k.fact }))}
+        </section>
+      </div>
+    </Page>
+  );
+}
+
+/* ------------------------------------------------------------ 7. parts */
 
 export function PartsStep({ draft, update, go, back }: StepProps) {
   const parts = new Set(draft.parts);
@@ -603,7 +844,7 @@ export function PartsStep({ draft, update, go, back }: StepProps) {
         </>
       }
       right={
-        <Button variant="primary" onClick={() => go("keys")}>
+        <Button variant="primary" onClick={() => go("install")}>
           Continue
         </Button>
       }
@@ -645,49 +886,6 @@ export function PartsStep({ draft, update, go, back }: StepProps) {
   );
 }
 
-/* ------------------------------------------------------------ 7. keys */
-
-export function KeysStep({ draft, update, go, back }: StepProps) {
-  const keys = draft.keys;
-  return (
-    <Page
-      title="API keys (optional)"
-      left={<BackButton onClick={back} />}
-      right={
-        <>
-          <Button onClick={() => go("install", { keys: {} })}>Skip</Button>
-          <Button variant="primary" onClick={() => go("install")}>
-            Continue
-          </Button>
-        </>
-      }
-    >
-      <div className="section stack" style={{ gap: 14 }}>
-        {API_KEYS.map((k) => (
-          <div key={k.env}>
-            <label className="field-label" htmlFor={`key-${k.env}`}>
-              <span>{k.label}</span>
-              <span className="mono muted" style={{ fontSize: 11 }}>
-                {k.env}
-              </span>
-            </label>
-            <SecretInput
-              id={`key-${k.env}`}
-              value={keys[k.env] ?? ""}
-              onChange={(v) => {
-                const next = { ...keys };
-                if (v) next[k.env] = v;
-                else delete next[k.env];
-                update({ keys: next });
-              }}
-            />
-          </div>
-        ))}
-      </div>
-    </Page>
-  );
-}
-
 /* ------------------------------------------------------------ 8. install */
 
 export function InstallStep({ draft, go }: StepProps) {
@@ -702,6 +900,7 @@ export function InstallStep({ draft, go }: StepProps) {
     packs: draft.packs,
     oldFolder: draft.oldChoice === "old" ? draft.oldFolder : null,
     keys: draft.keys,
+    voice: draft.voice,
   };
 
   const run = async () => {

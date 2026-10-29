@@ -1,4 +1,4 @@
-import type { LicenseResult, ShellInfo, WizardStep } from "../shared/types";
+import type { LicenseResult, ShellInfo, VoicePlan, WizardStep } from "../shared/types";
 
 /** Everything the steps fill in. Keys stay in memory only (never in shell.json). */
 export interface Draft {
@@ -11,6 +11,7 @@ export interface Draft {
   parts: string[];
   packs: string[];
   keys: Record<string, string>;
+  voice: VoicePlan;
   crashReports: boolean;
   openAtLogin: boolean;
 }

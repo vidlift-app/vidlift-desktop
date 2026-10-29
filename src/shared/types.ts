@@ -21,6 +21,8 @@ export interface ShellState {
   parts: string[] | null;
   packs: string[] | null;
   oldFolder: string | null;
+  /** The narrator the member chose on "Set up AI" (not secret, so kept). */
+  voice: VoicePlan | null;
   crashReports: boolean;
   openAtLogin: boolean;
   windowBounds?: { x?: number; y?: number; width: number; height: number; maximized?: boolean } | null;
@@ -32,8 +34,8 @@ export type WizardStep =
   | "github"
   | "location"
   | "import"
+  | "ai"
   | "parts"
-  | "keys"
   | "install"
   | "done";
 
@@ -85,11 +87,28 @@ export interface OldInstall {
   message: string | null;
 }
 
+export type VoiceEngine = "elevenlabs" | "fish" | "minimax" | "ai33";
+
+/** Who narrates new videos: Kokoro on this computer, or the member's own
+ * account with a voice provider. Written to user/data/voice-default.json. */
+export interface VoicePlan {
+  mode: "local" | "online";
+  engine?: VoiceEngine;
+}
+
 export interface InstallPlan {
   parts: string[];
   packs: string[];
   oldFolder: string | null;
   keys: Record<string, string>;
+  voice: VoicePlan;
+}
+
+/** A key's check on "Set up AI": works, refused (with the provider's short
+ * reason), or not checked (no check for it, or no answer now). */
+export interface KeyCheck {
+  state: "ok" | "bad" | "unchecked";
+  message?: string;
 }
 
 export interface InstallProgress {
@@ -119,6 +138,8 @@ export interface VidLiftApi {
   install(plan: InstallPlan): Promise<void>;
   onProgress(cb: (p: InstallProgress) => void): () => void;
   finish(opts: { crashReports: boolean; openAtLogin: boolean }): Promise<void>;
+  /** Ask the key's provider whether it works. Never rejects for a bad key. */
+  testKey(env: string, value: string): Promise<KeyCheck>;
   openExternal(url: string): Promise<void>;
   copy(text: string): Promise<void>;
   /** waiting.html: follow the start-up, retry it, open the logs folder, quit. */

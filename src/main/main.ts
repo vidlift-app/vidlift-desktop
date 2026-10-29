@@ -32,6 +32,7 @@ import { fetchCatalog, NoAccess } from "./catalog";
 import { API_PORT, UI_PORT } from "./constants";
 import { devicePoll, deviceStart } from "./github";
 import { normalizeKey } from "./key";
+import { testKey } from "./keycheck";
 import { activate } from "./license";
 import * as state from "./state";
 import { apiHealthy, dashboardUrl, Supervisor } from "./supervisor";
@@ -670,6 +671,14 @@ function registerIpc(): void {
 
   handle("finish", (_e, opts: { crashReports: boolean; openAtLogin: boolean }) => finish(opts));
 
+  // The key is checked here and forgotten: never logged, never saved.
+  handle("testKey", (_e, env: string, value: string) => {
+    const name = String(env ?? "");
+    const key = String(value ?? "");
+    if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(name) || key.length > 512) return { state: "unchecked" };
+    return testKey(name, key);
+  });
+
   handle("openExternal", (_e, url: string) => openOutside(String(url)));
   handle("copy", (_e, text: string) => clipboard.writeText(String(text ?? "")));
 
@@ -728,6 +737,7 @@ async function install(sender: WebContents, plan: InstallPlan): Promise<void> {
     parts: plan.parts,
     packs: plan.packs,
     oldFolder: plan.oldFolder,
+    voice: plan.voice ?? null,
     step: "install",
   });
   const sup = getSupervisor(dir);
@@ -736,7 +746,13 @@ async function install(sender: WebContents, plan: InstallPlan): Promise<void> {
   });
   installing = true;
   try {
-    await installer.run({ parts: plan.parts ?? [], packs: plan.packs ?? [], oldFolder: plan.oldFolder ?? null, keys: plan.keys ?? {} });
+    await installer.run({
+      parts: plan.parts ?? [],
+      packs: plan.packs ?? [],
+      oldFolder: plan.oldFolder ?? null,
+      keys: plan.keys ?? {},
+      voice: plan.voice ?? { mode: "local" },
+    });
   } finally {
     installing = false;
   }

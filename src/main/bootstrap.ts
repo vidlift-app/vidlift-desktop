@@ -17,6 +17,7 @@ import { API_PORT, REQUIRED_PARTS, UV_ASSETS, UV_VERSION } from "./constants";
 import { writeLicense, machineId } from "./license";
 import { describeHardware, type SetupStatus } from "./hardware";
 import type { Supervisor } from "./supervisor";
+import { voiceDefault } from "./voice";
 import type { InstallPlan, InstallProgress } from "../shared/types";
 
 const run = promisify(execFile);
@@ -103,6 +104,8 @@ export class Installer {
     const login = (await this.whoAmI()) ?? null;
     await writeJson(path.join(this.l.user, "data", "github.json"), { token: this.token, login }, 0o600);
     if (Object.keys(plan.keys).length) await mergeEnv(path.join(this.l.user, ".env"), plan.keys);
+    // Who narrates new videos (Settings › Preferences shows and changes it).
+    await writeJson(path.join(this.l.user, "data", "voice-default.json"), voiceDefault(plan.voice));
     this.finished("prepare");
   }
 

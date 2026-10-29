@@ -47,6 +47,7 @@ const api: VidLiftApi = {
   install: (plan) => call("install", plan),
   onProgress,
   finish: (opts) => call("finish", opts),
+  testKey: (env, value) => call("testKey", env, value),
   openExternal: (url) => call("openExternal", url),
   copy: (text) => call("copy", text),
   onShellStatus,

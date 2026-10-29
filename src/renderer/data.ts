@@ -1,4 +1,4 @@
-import type { WizardStep } from "../shared/types";
+import type { VoiceEngine, WizardStep } from "../shared/types";
 
 export const WIZARD_STEPS: { id: WizardStep; label: string }[] = [
   { id: "welcome", label: "Welcome" },
@@ -6,8 +6,8 @@ export const WIZARD_STEPS: { id: WizardStep; label: string }[] = [
   { id: "github", label: "GitHub" },
   { id: "location", label: "Location" },
   { id: "import", label: "Your old VidLift" },
+  { id: "ai", label: "Set up AI" },
   { id: "parts", label: "Parts" },
-  { id: "keys", label: "API keys" },
   { id: "install", label: "Install" },
   { id: "done", label: "Done" },
 ];
@@ -77,16 +77,59 @@ export const PART_GROUPS: { title: string; kind: "parts" | "packs"; rows: PartRo
 export const ALL_PARTS = PART_GROUPS.filter((g) => g.kind === "parts").flatMap((g) => g.rows.map((r) => r.id));
 export const ALL_PACKS = PART_GROUPS.filter((g) => g.kind === "packs").flatMap((g) => g.rows.map((r) => r.id));
 
-/** The provider keys Settings › Keys lists first (apps/worker/inventory.py
- * CREDENTIALS, rendered by the dashboard's EnvironmentSettings), by its labels. */
-export const API_KEYS: { env: string; label: string }[] = [
-  { env: "GEMINI_API_KEY", label: "Gemini" },
-  { env: "ANTHROPIC_API_KEY", label: "Anthropic" },
-  { env: "KIE_API_KEY", label: "Kie.ai" },
-  { env: "AI33_API_KEY", label: "ai33 (TTS)" },
-  { env: "PEXELS_API_KEY", label: "Pexels" },
-  { env: "PIXABAY_API_KEY", label: "Pixabay" },
+/** A key on "Set up AI": its variable in user/.env, the label and signup
+ * link Settings › API keys shows (apps/worker/inventory.py CREDENTIALS). */
+export interface KeyRow {
+  env: string;
+  label: string;
+  url: string;
+}
+
+export const WRITING_KEY: KeyRow = { env: "GEMINI_API_KEY", label: "Gemini", url: "https://aistudio.google.com/apikey" };
+
+/** Behind "Use another provider". */
+export const WRITING_OTHER: KeyRow[] = [
+  { env: "ANTHROPIC_API_KEY", label: "Anthropic", url: "https://console.anthropic.com/settings/keys" },
+  { env: "KIE_API_KEY", label: "Kie.ai", url: "https://kie.ai/api-key" },
+  { env: "MODELFLARE_API_KEY", label: "Modelflare", url: "https://modelflare.dev/keys" },
+  { env: "PORTIX_API_KEY", label: "Portix", url: "https://www.portixapi.com/console/token" },
 ];
+
+/** The online voices, each on the member's own key (apps/worker/voicehouses.py, tts.py). */
+export const VOICE_ENGINES: { id: VoiceEngine; label: string; key: KeyRow }[] = [
+  { id: "elevenlabs", label: "ElevenLabs", key: { env: "ELEVENLABS_API_KEY", label: "ElevenLabs", url: "https://elevenlabs.io/app/settings/api-keys" } },
+  { id: "fish", label: "Fish Audio", key: { env: "FISH_AUDIO_API_KEY", label: "Fish Audio", url: "https://fish.audio/app/api-keys/" } },
+  {
+    id: "minimax",
+    label: "MiniMax",
+    key: { env: "MINIMAX_API_KEY", label: "MiniMax", url: "https://www.minimax.io/platform/user-center/basic-information/interface-key" },
+  },
+  { id: "ai33", label: "ai33", key: { env: "AI33_API_KEY", label: "ai33 (TTS)", url: "https://ai33.pro/app/api-document" } },
+];
+
+export const FOOTAGE_KEYS: (KeyRow & { fact?: string })[] = [
+  {
+    env: "YOUTUBE_API_KEY",
+    label: "YouTube Data API",
+    url: "https://console.cloud.google.com/apis/library/youtube.googleapis.com",
+    fact: "Faster research and exact numbers. Without it, VidLift reads YouTube's pages, slower.",
+  },
+  { env: "PEXELS_API_KEY", label: "Pexels", url: "https://www.pexels.com/api/new/" },
+  { env: "PIXABAY_API_KEY", label: "Pixabay", url: "https://pixabay.com/api/docs/" },
+];
+
+/** The Parts page's pre-selection for a voice choice: Kokoro (and the AI
+ * pack it needs) for the local voice; no Kokoro by default for an online one. */
+export function partsForVoice(parts: string[], mode: "local" | "online"): string[] {
+  const next = new Set(parts);
+  if (mode === "local") {
+    next.add("tts");
+    next.add("ai");
+  } else {
+    next.delete("tts");
+  }
+  return ALL_PARTS.filter((id) => next.has(id)).concat([...next].filter((id) => !ALL_PARTS.includes(id)));
+}
 
 export const URLS = {
   skool: "https://www.skool.com/yta-insiders",

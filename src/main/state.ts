@@ -17,6 +17,7 @@ const DEFAULTS: ShellState = {
   parts: null,
   packs: null,
   oldFolder: null,
+  voice: null,
   crashReports: true,
   openAtLogin: false,
 };
@@ -34,6 +35,8 @@ export function load(): ShellState {
   } catch {
     cached = { ...DEFAULTS };
   }
+  // Before "Set up AI" (2026-10-30) the keys step came after Parts as "keys".
+  if ((cached!.step as string) === "keys") cached!.step = "ai";
   return cached!;
 }
 

@@ -7,7 +7,7 @@ import "./styles.css";
 import { ALL_PACKS, ALL_PARTS, WIZARD_STEPS, stepIndex } from "./data";
 import { GlyphCurrent, GlyphDone, GlyphPending } from "./icons";
 import { markUrl } from "./ui";
-import { DoneStep, GithubStep, ImportStep, InstallStep, KeysStep, LicenseStep, LocationStep, PartsStep, WelcomeStep } from "./steps";
+import { AiStep, DoneStep, GithubStep, ImportStep, InstallStep, LicenseStep, LocationStep, PartsStep, WelcomeStep } from "./steps";
 
 const api = window.vidlift;
 
@@ -24,6 +24,7 @@ function draftFrom(info: ShellInfo): Draft {
     parts: s.parts ?? [...ALL_PARTS],
     packs: s.packs ?? [...ALL_PACKS],
     keys: {},
+    voice: s.voice ?? { mode: "local" },
     crashReports: s.crashReports ?? true,
     openAtLogin: s.openAtLogin ?? false,
   };
@@ -72,7 +73,9 @@ function App() {
     void api.info().then((i) => {
       setInfo(i);
       setDraft(draftFrom(i));
-      setStep(i.state.setupDone ? "done" : i.state.step);
+      // A step this version no longer has (an older shell.json) starts over.
+      const saved = (i.state.step as string) === "keys" ? "ai" : i.state.step;
+      setStep(i.state.setupDone ? "done" : stepIndex(saved) >= 0 ? saved : "welcome");
     });
   }, []);
 
@@ -92,6 +95,7 @@ function App() {
         oldFolder: nd.oldChoice === "old" ? nd.oldFolder : null,
         parts: nd.parts,
         packs: nd.packs,
+        voice: nd.voice,
       });
     },
     [draft],
@@ -114,8 +118,8 @@ function App() {
         {step === "github" && <GithubStep {...props} />}
         {step === "location" && <LocationStep {...props} />}
         {step === "import" && <ImportStep {...props} />}
+        {step === "ai" && <AiStep {...props} />}
         {step === "parts" && <PartsStep {...props} />}
-        {step === "keys" && <KeysStep {...props} />}
         {step === "install" && <InstallStep {...props} />}
         {step === "done" && <DoneStep {...props} />}
       </main>
