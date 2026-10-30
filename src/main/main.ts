@@ -42,6 +42,7 @@ import type {
   DevicePoll,
   FolderCheck,
   InstallPlan,
+  InstallProgress,
   LicenseResult,
   OldFolder,
   OldInstall,
@@ -73,6 +74,12 @@ let supervisorDir: string | null = null;
 /** The GitHub token between wizard steps (also kept encrypted by state.ts). */
 let token: string | null = null;
 let installing = false;
+/** The install in progress, the page following it and its last report. A
+ *  reload of the wizard (Cmd+R, 2026-10-30) follows the same install rather
+ *  than being refused with "Setup is already running". */
+let installRun: Promise<void> | null = null;
+let installSender: WebContents | null = null;
+let installProgress: InstallProgress | null = null;
 let quitting = false;
 let readyToExit = false;
 /** Bumped whenever a new start-up wait begins, so an older one stops. */
@@ -745,7 +752,12 @@ async function activateLicense(raw: string): Promise<LicenseResult> {
 }
 
 async function install(sender: WebContents, plan: InstallPlan): Promise<void> {
-  if (installing) throw new Error("Setup is already running.");
+  installSender = sender;
+  if (installRun) {
+    if (installProgress) sender.send("progress", installProgress);
+    return installRun;
+  }
+  installProgress = null;
   token ??= await state.loadToken();
   if (!token) throw new Error("Sign in with GitHub first.");
   const before = state.load();
@@ -761,20 +773,24 @@ async function install(sender: WebContents, plan: InstallPlan): Promise<void> {
   });
   const sup = getSupervisor(dir);
   const installer = new Installer(layout(dir), token, st.licenseKey ?? "", sup, (p) => {
-    if (!sender.isDestroyed()) sender.send("progress", p);
+    installProgress = p;
+    const to = installSender;
+    if (to && !to.isDestroyed()) to.send("progress", p);
   });
   installing = true;
-  try {
-    await installer.run({
+  installRun = installer
+    .run({
       parts: plan.parts ?? [],
       packs: plan.packs ?? [],
       oldFolder: plan.oldFolder ?? null,
       keys: plan.keys ?? {},
       voice: plan.voice ?? { mode: "local" },
+    })
+    .finally(() => {
+      installing = false;
+      installRun = null;
     });
-  } finally {
-    installing = false;
-  }
+  return installRun;
 }
 
 async function finish(opts: { crashReports: boolean; openAtLogin: boolean }): Promise<void> {

@@ -216,14 +216,29 @@ export class Installer {
     this.finished("parts");
   }
 
-  /** Poll the setup status until every part is installed or one fails. */
+  /** Poll the setup status until every part is installed or one fails.
+   *
+   * A part's job leaves the status the moment it ends, so a failure shows as
+   * its `error` (core 2026.10.30 on) or, on older cores, only as an emptied
+   * queue with nothing running. The Mac's first install sat at "Installed 0
+   * of 10" that way (2026-10-30): the queue had stopped and nothing said so.
+   * A stall is retried twice, then reported. */
   private async follow(ids: string[]): Promise<void> {
     const started = Date.now();
     let lastLine = "";
+    let idle = 0;
+    let retries = 0;
     for (;;) {
       await sleep(2000);
       const s = await getJson<{
-        components: { id: string; label?: string; installed: boolean; job?: { status?: string; step?: string; progress?: number | null; error?: string | null } | null }[];
+        queue?: string[];
+        components: {
+          id: string;
+          label?: string;
+          installed: boolean;
+          error?: string | null;
+          job?: { status?: string; step?: string; progress?: number | null; error?: string | null } | null;
+        }[];
       }>("/api/setup");
       if (!s) {
         // A restart in between: the API comes back. Unless boot.py itself ended.
@@ -233,8 +248,20 @@ export class Installer {
       const mine = s.components.filter((c) => ids.includes(c.id));
       const done = mine.filter((c) => c.installed).length;
       const busy = mine.find((c) => c.job && c.job.status === "running");
-      const failed = mine.find((c) => c.job && c.job.status === "failed");
-      if (failed) throw new Error(`${failed.label ?? failed.id}: ${failed.job?.error ?? "install failed"}`);
+      const failed = mine.find((c) => !c.installed && (c.error || c.job?.status === "failed"));
+      const left = mine.filter((c) => !c.installed);
+      idle = !busy && left.length && !s.queue?.length ? idle + 1 : 0;
+      if (failed || idle >= 3) {
+        const which = failed ?? left[0];
+        const why = failed?.error ?? failed?.job?.error ?? "it stopped without saying why";
+        if (retries >= 2) throw new Error(`${which.label ?? which.id} didn't install: ${why}`);
+        retries += 1;
+        this.log(`! ${which.label ?? which.id}: ${why}. Trying again (${retries} of 2).`);
+        const again = await postJson("/api/setup/queue", { components: left.map((c) => c.id) });
+        if (!again) throw new Error(`${which.label ?? which.id} didn't install: ${why}`);
+        idle = 0;
+        continue;
+      }
       const line = busy ? `${busy.label ?? busy.id}: ${busy.job?.step ?? "installing"}` : "";
       if (line && line !== lastLine) {
         this.log(line);
