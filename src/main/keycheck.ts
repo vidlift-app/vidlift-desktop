@@ -33,7 +33,6 @@ export const CHECKED = [
   "ELEVENLABS_API_KEY",
   "FISH_AUDIO_API_KEY",
   "MINIMAX_API_KEY",
-  "PEXELS_API_KEY",
   "PIXABAY_API_KEY",
 ] as const;
 
@@ -189,11 +188,6 @@ async function minimax(f: FetchLike, key: string): Promise<KeyCheck> {
   return { state: "bad", message: msg || `Refused (${status})` };
 }
 
-async function pexels(f: FetchLike, key: string): Promise<KeyCheck> {
-  const r = await get(f, "https://api.pexels.com/v1/search?query=nature&per_page=1", { Authorization: key });
-  return byStatus(r, await body(r), key);
-}
-
 async function pixabay(f: FetchLike, key: string): Promise<KeyCheck> {
   const r = await get(f, `https://pixabay.com/api/?key=${encodeURIComponent(key)}&q=nature&per_page=3`);
   const b = await body(r);
@@ -227,8 +221,6 @@ export async function testKey(env: string, value: string, f: FetchLike = fetch):
         return await fishAudio(f, key);
       case "MINIMAX_API_KEY":
         return await minimax(f, key);
-      case "PEXELS_API_KEY":
-        return await pexels(f, key);
       case "PIXABAY_API_KEY":
         return await pixabay(f, key);
       default:

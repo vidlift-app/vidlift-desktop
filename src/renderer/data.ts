@@ -115,7 +115,6 @@ export const FOOTAGE_KEYS: (KeyRow & { fact?: string })[] = [
     url: "https://console.cloud.google.com/apis/library/youtube.googleapis.com",
     fact: "Faster research and exact numbers. Without it, VidLift reads YouTube's pages, slower.",
   },
-  { env: "PEXELS_API_KEY", label: "Pexels", url: "https://www.pexels.com/api/new/" },
   { env: "PIXABAY_API_KEY", label: "Pixabay", url: "https://pixabay.com/api/docs/" },
 ];
 

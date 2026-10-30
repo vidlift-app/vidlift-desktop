@@ -30,7 +30,6 @@ const CASES: Record<string, { ok: FetchLike; bad: FetchLike }> = {
     ok: reply(200, { base_resp: { status_code: 0, status_msg: "success" } }),
     bad: reply(200, { base_resp: { status_code: 2049, status_msg: "invalid api key" } }),
   },
-  PEXELS_API_KEY: { ok: reply(200, { photos: [] }), bad: reply(401, { error: "Unauthorized" }) },
   PIXABAY_API_KEY: { ok: reply(200, { hits: [] }), bad: reply(400, "[ERROR 400] Invalid or missing API key") },
 };
 
@@ -57,7 +56,7 @@ for (const [env, c] of Object.entries(CASES)) {
 
 test("a provider in trouble is not a verdict on the key", async () => {
   assert.equal((await testKey("GEMINI_API_KEY", KEY, reply(503))).state, "unchecked");
-  assert.equal((await testKey("PEXELS_API_KEY", KEY, reply(429))).state, "unchecked");
+  assert.equal((await testKey("PIXABAY_API_KEY", KEY, reply(429))).state, "unchecked");
   assert.equal((await testKey("MINIMAX_API_KEY", KEY, reply(200, { base_resp: { status_code: 1002 } }))).state, "unchecked");
 });
 
@@ -106,14 +105,11 @@ test("the key goes in the header or query each provider expects", async () => {
     return new Response("{}", { status: 200 });
   };
   await testKey("ELEVENLABS_API_KEY", KEY, f);
-  await testKey("PEXELS_API_KEY", KEY, f);
   await testKey("PIXABAY_API_KEY", KEY, f);
   await testKey("MINIMAX_API_KEY", KEY, f);
   assert.equal(calls[0].url, "https://api.elevenlabs.io/v1/user");
   assert.equal(calls[0].headers["xi-api-key"], KEY);
-  assert.equal(calls[1].url, "https://api.pexels.com/v1/search?query=nature&per_page=1");
-  assert.equal(calls[1].headers.Authorization, KEY);
-  assert.equal(calls[2].url, `https://pixabay.com/api/?key=${KEY}&q=nature&per_page=3`);
-  assert.equal(calls[3].method, "POST");
-  assert.equal(calls[3].headers.Authorization, `Bearer ${KEY}`);
+  assert.equal(calls[1].url, `https://pixabay.com/api/?key=${KEY}&q=nature&per_page=3`);
+  assert.equal(calls[2].method, "POST");
+  assert.equal(calls[2].headers.Authorization, `Bearer ${KEY}`);
 });
