@@ -876,11 +876,42 @@ function samePath(a: string, b: string): boolean {
   return norm(a) === norm(b);
 }
 
+/** What a VidLift install folder holds, and what may already be there: the
+ *  old launcher's `install.json` (tools/vidlift.py record_install writes it
+ *  to %LOCALAPPDATA%\VidLift, the default) and the system's own files. */
+const OURS = new Set([
+  "app",
+  "runtime",
+  "user",
+  "install.json",
+  "agents.md",
+  "claude.md",
+  "gemini.md",
+  "license.txt",
+  "notice.md",
+  ".ds_store",
+  "desktop.ini",
+  "thumbs.db",
+]);
+
 async function checkFolder(p: string): Promise<FolderCheck> {
   const dir = p ? path.resolve(p) : "";
   if (!p || !path.isAbsolute(p)) return { path: dir, ok: false, freeGb: null, message: "Pick a folder." };
   if ((await exists(dir)) && !(await isDir(dir))) {
     return { path: dir, ok: false, freeGb: null, message: "That is a file, not a folder. Pick a folder." };
+  }
+  // Only an empty folder or a VidLift install: the install replaces `app` and
+  // writes beside it, so a folder of other things is refused.
+  if (await isDir(dir)) {
+    const foreign = (await fs.readdir(dir)).filter((n) => !OURS.has(n.toLowerCase()) && !n.startsWith(".unpack-"));
+    if (foreign.length) {
+      return {
+        path: dir,
+        ok: false,
+        freeGb: null,
+        message: "This folder already has other files in it. Pick an empty folder, or a new one.",
+      };
+    }
   }
   // The folder itself, or the nearest one above it that exists yet.
   let probe = dir;

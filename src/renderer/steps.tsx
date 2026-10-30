@@ -441,9 +441,16 @@ export function LocationStep({ info, draft, update, go, back }: StepProps) {
     };
   }, [dir]);
 
+  // A folder of its own inside whatever is picked (2026-10-30): picking
+  // D:\CODING put app, runtime and user straight into the owner's coding
+  // folder, beside their projects.
   const change = async () => {
     const p = await api.chooseFolder("Where to install VidLift", dir);
-    if (p) update({ installDir: p });
+    if (!p) return;
+    const sep = info.platform === "win32" ? "\\" : "/";
+    const base = p.replace(/[\\/]+$/, "");
+    const name = base.split(/[\\/]/).pop() ?? "";
+    update({ installDir: name.toLowerCase() === "vidlift" ? base : `${base}${sep}VidLift` });
   };
 
   const blocked = !check || !check.ok;

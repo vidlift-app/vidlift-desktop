@@ -275,13 +275,27 @@ export class Installer {
         continue;
       }
       const rows = status.components;
-      const missing = wanted.filter((id) => !skipped.has(id) && !rows.find((c) => c.id === id)?.installed);
+      const isIn = (id: string) => !!rows.find((c) => c.id === id)?.installed;
+      const missing = withNeeds(wanted, rows).filter((id) => !skipped.has(id) && !isIn(id));
       if (!missing.length) break;
-      const queued = await postJson<{ queue: string[] }>("/api/setup/queue", { components: missing });
+      // Only the parts whose needs are in, a round at a time: core
+      // 2026.10.27.3 queues in its own order, which put the renderer
+      // packages before the graphics they need, and stopped there with no
+      // word (Windows, 2026-10-30).
+      const ready = missing.filter((id) => (rows.find((c) => c.id === id)?.needs ?? []).every(isIn));
+      if (!ready.length) {
+        for (const id of missing) {
+          skipped.add(id);
+          const label = rows.find((c) => c.id === id)?.label ?? id;
+          this.note(`${label} was not installed: a part it needs is missing. Install it later from Settings › Setup.`);
+        }
+        break;
+      }
+      const queued = await postJson<{ queue: string[] }>("/api/setup/queue", { components: ready });
       const stop = queued
-        ? await this.follow(missing)
-        : { id: missing[0], label: rows.find((c) => c.id === missing[0])?.label ?? missing[0], why: "VidLift's setup did not take the list" };
-      if (!stop) break;
+        ? await this.follow(ready, withNeeds(wanted, rows).filter((id) => !skipped.has(id)))
+        : { id: ready[0], label: rows.find((c) => c.id === ready[0])?.label ?? ready[0], why: "VidLift's setup did not take the list" };
+      if (!stop) continue;
       const n = (tries.get(stop.id) ?? 0) + 1;
       tries.set(stop.id, n);
       if (!needed(rows).has(stop.id) && n >= 3) {
@@ -307,7 +321,7 @@ export class Installer {
    * its error (core 2026.10.30 on), or on older cores an emptied queue with
    * nothing running and parts left (the Mac's "Installed 0 of 10",
    * 2026-10-30: a part's job leaves the status the moment it ends). */
-  private async follow(ids: string[]): Promise<{ id: string; label: string; why: string } | null> {
+  private async follow(ids: string[], all: string[] = ids): Promise<{ id: string; label: string; why: string } | null> {
     let lastLine = "";
     let idle = 0;
     for (;;) {
@@ -337,9 +351,12 @@ export class Installer {
         this.log(line);
         lastLine = line;
       }
+      // Counted over every part the member gets, not only this round's.
+      const every = s.components.filter((c) => all.includes(c.id));
+      const doneAll = every.filter((c) => c.installed).length;
       this.report({
-        message: busy ? `${busy.label ?? busy.id} — ${busy.job?.step ?? "installing"}` : `Installed ${done} of ${mine.length}`,
-        fraction: mine.length ? (done + (busy?.job?.progress ?? 0)) / mine.length : null,
+        message: busy ? `${busy.label ?? busy.id} — ${busy.job?.step ?? "installing"}` : `Installed ${doneAll} of ${every.length}`,
+        fraction: every.length ? (doneAll + (busy?.job?.progress ?? 0)) / every.length : null,
       });
     }
   }
@@ -471,6 +488,18 @@ export function sleep(ms: number): Promise<void> {
 
 export function sha256Text(s: string): string {
   return createHash("sha256").update(s).digest("hex");
+}
+
+/** `ids` and every part they need, directly or through another. */
+function withNeeds(ids: string[], rows: PartRow[]): string[] {
+  const out: string[] = [];
+  const add = (id: string) => {
+    if (out.includes(id)) return;
+    out.push(id);
+    for (const n of rows.find((c) => c.id === id)?.needs ?? []) add(n);
+  };
+  ids.forEach(add);
+  return out;
 }
 
 /** The parts VidLift cannot run without, with all they need. */
