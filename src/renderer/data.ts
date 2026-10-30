@@ -70,6 +70,7 @@ export const PART_GROUPS: { title: string; kind: "parts" | "packs"; rows: PartRo
       // The overlays pack zip is 250 MB (dist/release, 2026-10-24).
       { id: "overlays", name: "Overlays", size: "about 250 MB", gb: 0.25 },
       { id: "backgrounds", name: "Backgrounds", size: "about 260 MB", gb: 0.26 },
+      { id: "3d", name: "3D Studio", desc: "Characters and scene sounds for 3D films", size: "about 50 MB", gb: 0.05 },
     ],
   },
 ];
