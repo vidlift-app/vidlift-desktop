@@ -20,6 +20,7 @@ import {
   Menu,
   nativeImage,
   type NativeImage,
+  Notification,
   screen,
   shell,
   Tray,
@@ -248,10 +249,25 @@ function createMain(hidden: boolean): void {
     if (quitting) return;
     e.preventDefault();
     win.hide();
+    void stillRunningNotice();
   });
   win.on("closed", () => {
     if (mainWin === win) mainWin = null;
   });
+}
+
+/** The first time the window is closed, say where VidLift went: a member
+ * who closes it and sees nothing may think it quit, or start it again. */
+async function stillRunningNotice(): Promise<void> {
+  if (state.load().trayNoticeShown || !Notification.isSupported()) return;
+  await state.save({ trayNoticeShown: true });
+  const where = process.platform === "darwin" ? "in the menu bar" : "by the clock";
+  const n = new Notification({
+    title: "VidLift is still running",
+    body: `Videos carry on. Click the VidLift icon ${where} to open it again, or right-click it to quit.`,
+  });
+  n.on("click", () => showFront());
+  n.show();
 }
 
 /** The saved size and place, if a screen still shows it; else the default

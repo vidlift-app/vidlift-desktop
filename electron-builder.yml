@@ -25,10 +25,12 @@ asar: true
 
 win:
   target:
+    # x64 only (2026-10-30): with arm64 too the installer carried both
+    # (236 MB). Windows on ARM runs it emulated, and the pipeline's own parts
+    # (torch, FFmpeg) are x64 there anyway.
     - target: nsis
       arch:
         - x64
-        - arm64
 
 nsis:
   oneClick: true
