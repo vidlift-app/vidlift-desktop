@@ -121,6 +121,10 @@ async function ready(): Promise<void> {
     // The app folder is gone: the wizard installs it again from the start.
     st = await state.save({ setupDone: false, step: "welcome" });
   }
+  // The icon from the first page (2026-10-30, the owner: the VidLift icon in
+  // the Mac's menu bar and the Windows tray on close): a wizard closed while
+  // it installs goes there and carries on.
+  createTray();
   openWizard();
 }
 
@@ -215,15 +219,10 @@ function openWizard(): void {
   win.once("ready-to-show", () => win.show());
   win.on("close", (e) => {
     if (quitting || !installing) return;
-    const choice = dialog.showMessageBoxSync(win, {
-      type: "warning",
-      title: "VidLift",
-      message: "Setup is still running. Quit now? It carries on from where it stopped next time.",
-      buttons: ["Quit", "Keep installing"],
-      defaultId: 1,
-      cancelId: 1,
-    });
-    if (choice !== 0) e.preventDefault();
+    // Installing: the window goes to the tray and the install carries on.
+    e.preventDefault();
+    win.hide();
+    void stillRunningNotice(true);
   });
   win.on("closed", () => {
     if (wizardWin === win) wizardWin = null;
@@ -266,14 +265,21 @@ function createMain(hidden: boolean): void {
 
 /** The first time the window is closed, say where VidLift went: a member
  * who closes it and sees nothing may think it quit, or start it again. */
-async function stillRunningNotice(): Promise<void> {
-  if (state.load().trayNoticeShown || !Notification.isSupported()) return;
-  await state.save({ trayNoticeShown: true });
+async function stillRunningNotice(installingNow = false): Promise<void> {
+  if (!Notification.isSupported()) return;
+  if (!installingNow) {
+    if (state.load().trayNoticeShown) return;
+    await state.save({ trayNoticeShown: true });
+  }
   const where = process.platform === "darwin" ? "in the menu bar" : "by the clock";
-  const n = new Notification({
-    title: "VidLift is still running",
-    body: `Videos carry on. Click the VidLift icon ${where} to open it again, or right-click it to quit.`,
-  });
+  const n = new Notification(
+    installingNow
+      ? { title: "VidLift is still installing", body: `Click the VidLift icon ${where} to watch it.` }
+      : {
+          title: "VidLift is still running",
+          body: `Videos carry on. Click the VidLift icon ${where} to open it again, or right-click it to quit.`,
+        },
+  );
   n.on("click", () => showFront());
   n.show();
 }
@@ -325,9 +331,14 @@ function showFront(): void {
 // --- tray -------------------------------------------------------------------------
 
 function trayImage(): NativeImage {
-  const small = nativeImage.createFromPath(path.join(ASSETS, "tray.png")); // 32 px
+  let small = nativeImage.createFromPath(path.join(ASSETS, "tray.png")); // 32 px
   const large = nativeImage.createFromPath(path.join(ASSETS, "tray@2x.png")); // 64 px
-  if (small.isEmpty()) return small;
+  if (small.isEmpty()) {
+    // An empty image is an invisible icon: the app's own icon instead.
+    logLine("tray.png did not load; using the app icon");
+    small = nativeImage.createFromPath(path.join(ASSETS, "icon.png")).resize({ height: 32, quality: "best" });
+    if (small.isEmpty()) return small;
+  }
   const img = nativeImage.createEmpty();
   // 16 points high: 16 px on a normal screen, 32 on a Retina / 200 % one.
   img.addRepresentation({ scaleFactor: 1, buffer: small.resize({ height: 16, quality: "best" }).toPNG() });
@@ -344,10 +355,26 @@ function createTray(): void {
     Menu.buildFromTemplate([
       { label: "Open VidLift", click: () => showFront() },
       { type: "separator" },
-      { label: "Quit VidLift", click: () => app.quit() },
+      { label: "Quit VidLift", click: () => trayQuit() },
     ]),
   );
   if (process.platform === "win32") tray.on("click", () => showFront());
+}
+
+/** Quit from the tray. While installing, ask first: the window may be hidden. */
+function trayQuit(): void {
+  if (installing) {
+    const choice = dialog.showMessageBoxSync({
+      type: "warning",
+      title: "VidLift",
+      message: "Setup is still running. Quit now? It carries on from where it stopped next time.",
+      buttons: ["Quit", "Keep installing"],
+      defaultId: 1,
+      cancelId: 1,
+    });
+    if (choice !== 0) return;
+  }
+  app.quit();
 }
 
 // --- VidLift's Python side --------------------------------------------------------

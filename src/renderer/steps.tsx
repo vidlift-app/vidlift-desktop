@@ -15,6 +15,7 @@ import {
   partsForVoice,
   type KeyRow,
 } from "./data";
+import { KeyLogo, PartLogo, VoiceLogo } from "./logos";
 import {
   GlyphDone,
   GlyphFailed,
@@ -674,9 +675,12 @@ function KeyField({
   return (
     <div className="krow">
       <div className="krow-label">
-        <label htmlFor={id} title={row.env}>
-          {row.label}
-        </label>
+        <span className="krow-name">
+          <KeyLogo env={row.env} />
+          <label htmlFor={id} title={row.env}>
+            {row.label}
+          </label>
+        </span>
         <button type="button" className="klink" onClick={() => void api.openExternal(row.url)}>
           {linkText}
           <IconExternal />
@@ -792,6 +796,7 @@ export function AiStep({ draft, update, go, back }: StepProps) {
                     className={`seg-opt${e.id === engine.id ? " on" : ""}`}
                     onClick={() => setVoice({ mode: "online", engine: e.id })}
                   >
+                    <VoiceLogo id={e.id} size={14} />
                     {e.label}
                   </button>
                 ))}
@@ -863,6 +868,9 @@ export function PartsStep({ draft, update, go, back }: StepProps) {
         {ALWAYS.map((r) => (
           <div className="part locked" key={r.id}>
             <Checkbox on locked label={r.name} />
+            <span className="part-mark">
+              <PartLogo id={r.id} />
+            </span>
             <div className="part-text">
               <span className="part-name">{r.name}</span>
             </div>
@@ -879,6 +887,9 @@ export function PartsStep({ draft, update, go, back }: StepProps) {
               return (
                 <div className="part" key={r.id} onClick={() => set(r.id, !on)}>
                   <Checkbox on={on} label={r.name} onChange={(v) => set(r.id, v)} />
+                  <span className="part-mark">
+                    <PartLogo id={r.id} />
+                  </span>
                   <div className="part-text">
                     <span className="part-name">{r.name}</span>
                     {r.desc && <span className="part-desc">{r.desc}</span>}
@@ -902,6 +913,7 @@ export function InstallStep({ draft, go }: StepProps) {
   const [copied, copy] = useCopied();
   const last = useRef<InstallProgress | null>(null);
   const started = useRef(false);
+  const [finished, setFinished] = useState(false);
 
   const plan: InstallPlan = {
     parts: draft.parts,
@@ -917,6 +929,9 @@ export function InstallStep({ draft, go }: StepProps) {
       await api.install(plan);
       const err = last.current?.error;
       if (err) setError(err);
+      // Parts or packs left for later: the page stays, listing them, until
+      // the member reads it and goes on.
+      else if (last.current?.notes?.length) setFinished(true);
       else go("done");
     } catch (e) {
       setError(last.current?.error || errText(e));
@@ -976,6 +991,24 @@ export function InstallStep({ draft, go }: StepProps) {
               <span className="dim">This computer · </span>
               {p.hardware}
             </span>
+          </div>
+        )}
+
+        {!!p?.notes?.length && (
+          <div className="card install-notes">
+            {p.notes.map((n) => (
+              <div key={n} className="row small warn-text">
+                <IconAlert />
+                <span className="selectable">{n}</span>
+              </div>
+            ))}
+            {finished && (
+              <div className="actions">
+                <Button variant="primary" onClick={() => go("done")}>
+                  Continue
+                </Button>
+              </div>
+            )}
           </div>
         )}
 

@@ -518,3 +518,17 @@ h1.title { font: 600 24px/1.25 var(--font-display); letter-spacing: -0.01em; mar
 .old-folder { display: flex; flex-direction: column; gap: 10px; }
 .old-folder-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .old-folder-path { margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
+
+/* parts or packs left for later, as the install goes (2026-10-30) */
+.card.install-notes { display: flex; flex-direction: column; gap: 8px; border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+
+/* the providers' and parts' own marks (2026-10-30) */
+.plogo { flex: none; display: inline-block; border-radius: 4px; }
+.plogo-img { object-fit: contain; background: #fff; padding: 1px; box-sizing: border-box; }
+.plogo-dark { box-shadow: 0 0 0 1px rgba(250, 246, 242, 0.22); }
+.plogo-line { color: var(--text-dim); border-radius: 0; }
+.krow-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.seg-opt { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.seg-opt .plogo { border-radius: 3px; }
+.part-mark { flex: none; display: inline-flex; width: 16px; height: 16px; }
+

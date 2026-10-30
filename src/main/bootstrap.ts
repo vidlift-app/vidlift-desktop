@@ -12,7 +12,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import extract from "extract-zip";
-import { download, fetchCatalog, latest } from "./catalog";
+import { download, fetchCatalog, latest, NoAccess } from "./catalog";
 import { API_PORT, REQUIRED_PARTS, UV_ASSETS, UV_VERSION } from "./constants";
 import { writeLicense, machineId } from "./license";
 import { describeHardware, type SetupStatus } from "./hardware";
@@ -21,6 +21,18 @@ import { voiceDefault } from "./voice";
 import type { InstallPlan, InstallProgress } from "../shared/types";
 
 const run = promisify(execFile);
+
+/** A problem that trying again cannot fix (no access, an unsupported computer). */
+class Final extends Error {}
+
+interface PartRow {
+  id: string;
+  label?: string;
+  installed: boolean;
+  needs?: string[];
+  error?: string | null;
+  job?: { status?: string; step?: string; progress?: number | null; error?: string | null } | null;
+}
 
 export { describeHardware } from "./hardware";
 
@@ -44,7 +56,16 @@ export function uvPath(l: Layout): string {
 type Report = (p: Partial<InstallProgress>) => void;
 
 export class Installer {
-  private progress: InstallProgress = { step: "prepare", message: "", fraction: null, done: [], log: [], error: null, hardware: null };
+  private progress: InstallProgress = {
+    step: "prepare",
+    message: "",
+    fraction: null,
+    done: [],
+    log: [],
+    error: null,
+    hardware: null,
+    notes: [],
+  };
 
   constructor(
     private readonly l: Layout,
@@ -72,6 +93,37 @@ export class Installer {
 
   private finished(step: string): void {
     this.report({ done: [...this.progress.done, step] });
+  }
+
+  /** Something left for later, shown on the install page at once. */
+  private note(line: string): void {
+    this.log(`! ${line}`);
+    this.report({ notes: [...this.progress.notes, line] });
+  }
+
+  /** Nothing in the install just fails (2026-10-30, the owner: "if anything
+   * goes wrong, just report it live in the installer"): a step that goes
+   * wrong says why on the page and is tried again, counting down. Only what
+   * trying again cannot fix (Final, no access) ends the install. */
+  private async again<T>(what: string, fn: () => Promise<T>, tries = 6): Promise<T> {
+    for (let n = 1; ; n++) {
+      try {
+        return await fn();
+      } catch (e) {
+        if (e instanceof Final || e instanceof NoAccess || n >= tries) throw e;
+        await this.wait(`${what}: ${e instanceof Error ? e.message : String(e)}`, Math.min(60, 5 * 2 ** (n - 1)), n);
+      }
+    }
+  }
+
+  /** "<why>. Trying again in 20 s (attempt 2)", counting down on the page. */
+  private async wait(why: string, seconds: number, attempt: number): Promise<void> {
+    this.log(`! ${why}`);
+    for (let s = seconds; s > 0; s--) {
+      this.report({ message: `${why}. Trying again in ${s} s (attempt ${attempt + 1})`, fraction: null });
+      await sleep(1000);
+    }
+    this.report({ message: "Trying again" });
   }
 
   async run(plan: InstallPlan): Promise<void> {
@@ -142,16 +194,18 @@ export class Installer {
     }
     this.begin("uv", "Downloading the Python installer");
     const asset = UV_ASSETS[`${process.platform}-${process.arch}`];
-    if (!asset) throw new Error(`This computer (${process.platform} ${process.arch}) is not supported yet.`);
+    if (!asset) throw new Final(`This computer (${process.platform} ${process.arch}) is not supported yet.`);
     const dir = path.dirname(uv);
     await fs.mkdir(dir, { recursive: true });
     const archive = path.join(dir, asset.file);
-    await download(
-      `https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${asset.file}`,
-      null,
-      archive,
-      asset.sha256,
-      (f) => this.report({ fraction: f }),
+    await this.again("Downloading the Python installer", () =>
+      download(
+        `https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${asset.file}`,
+        null,
+        archive,
+        asset.sha256,
+        (f) => this.report({ fraction: f }),
+      ),
     );
     if (asset.file.endsWith(".zip")) {
       await extract(archive, { dir: dir });
@@ -169,15 +223,16 @@ export class Installer {
       return;
     }
     this.begin("core", "Reading the release list");
-    const catalog = await fetchCatalog(this.token);
+    const catalog = await this.again("Reading the release list", () => fetchCatalog(this.token));
     const channel = await readChannel(this.l.user);
     const entry = latest(catalog, channel, "core");
-    if (!entry) throw new Error("No VidLift release is published yet.");
-    this.report({ message: `Downloading VidLift ${String(entry.release_name ?? entry.version)}` });
+    if (!entry) throw new Final("No VidLift release is published yet.");
+    const name = `VidLift ${String(entry.release_name ?? entry.version)}`;
     const cache = path.join(this.l.runtime, "cache", "downloads");
-    const archive = await download(entry.asset, this.token, path.join(cache, entry.name), entry.sha256, (f) =>
-      this.report({ fraction: f }),
-    );
+    const archive = await this.again(`Downloading ${name}`, () => {
+      this.report({ message: `Downloading ${name}`, fraction: null });
+      return download(entry.asset, this.token, path.join(cache, entry.name), entry.sha256, (f) => this.report({ fraction: f }));
+    });
     this.report({ message: "Unpacking", fraction: null });
     const tmp = path.join(this.l.install, `.unpack-${process.pid}`);
     await fs.rm(tmp, { recursive: true, force: true });
@@ -203,64 +258,79 @@ export class Installer {
     this.finished("python");
   }
 
+  /** The parts, through the core's install queue. A part that goes wrong is
+   * tried again, saying why on the page; one VidLift needs (FFmpeg, Node,
+   * the graphics, the renderer) until it is in, an optional one three times,
+   * then it is left for Settings › Setup and the rest carry on. */
   private async parts(chosen: string[]): Promise<void> {
     this.begin("parts", "Installing the parts you picked");
     const wanted = [...new Set([...REQUIRED_PARTS, ...chosen])];
-    const status = await getJson<{ components: { id: string; installed: boolean }[] }>("/api/setup");
-    const missing = wanted.filter((id) => !status?.components?.find((c) => c.id === id)?.installed);
-    if (missing.length) {
-      const queued = await postJson<{ queue: { id: string }[] }>("/api/setup/queue", { components: missing });
-      if (!queued) throw new Error("VidLift's setup did not accept the install list.");
-      await this.follow(missing);
+    const skipped = new Set<string>();
+    const tries = new Map<string, number>();
+    for (;;) {
+      const status = await getJson<{ components?: PartRow[] }>("/api/setup");
+      if (!status?.components) {
+        await this.stillRunning();
+        await sleep(2000);
+        continue;
+      }
+      const rows = status.components;
+      const missing = wanted.filter((id) => !skipped.has(id) && !rows.find((c) => c.id === id)?.installed);
+      if (!missing.length) break;
+      const queued = await postJson<{ queue: string[] }>("/api/setup/queue", { components: missing });
+      const stop = queued
+        ? await this.follow(missing)
+        : { id: missing[0], label: rows.find((c) => c.id === missing[0])?.label ?? missing[0], why: "VidLift's setup did not take the list" };
+      if (!stop) break;
+      const n = (tries.get(stop.id) ?? 0) + 1;
+      tries.set(stop.id, n);
+      if (!needed(rows).has(stop.id) && n >= 3) {
+        for (const id of [stop.id, ...needing(stop.id, rows)]) {
+          if (!skipped.has(id) && wanted.includes(id)) {
+            skipped.add(id);
+            const label = rows.find((c) => c.id === id)?.label ?? id;
+            this.note(
+              id === stop.id
+                ? `${label} was not installed (${stop.why}). Install it later from Settings › Setup.`
+                : `${label} was not installed: it needs ${stop.label}. Install it later from Settings › Setup.`,
+            );
+          }
+        }
+        continue;
+      }
+      await this.wait(`${stop.label}: ${stop.why}`, Math.min(120, 10 * 2 ** Math.min(n - 1, 4)), n);
     }
     this.finished("parts");
   }
 
-  /** Poll the setup status until every part is installed or one fails.
-   *
-   * A part's job leaves the status the moment it ends, so a failure shows as
-   * its `error` (core 2026.10.30 on) or, on older cores, only as an emptied
-   * queue with nothing running. The Mac's first install sat at "Installed 0
-   * of 10" that way (2026-10-30): the queue had stopped and nothing said so.
-   * A stall is retried twice, then reported. */
-  private async follow(ids: string[]): Promise<void> {
-    const started = Date.now();
+  /** Follow the queue until every part in `ids` is in (null), or one stops:
+   * its error (core 2026.10.30 on), or on older cores an emptied queue with
+   * nothing running and parts left (the Mac's "Installed 0 of 10",
+   * 2026-10-30: a part's job leaves the status the moment it ends). */
+  private async follow(ids: string[]): Promise<{ id: string; label: string; why: string } | null> {
     let lastLine = "";
     let idle = 0;
-    let retries = 0;
     for (;;) {
       await sleep(2000);
-      const s = await getJson<{
-        queue?: string[];
-        components: {
-          id: string;
-          label?: string;
-          installed: boolean;
-          error?: string | null;
-          job?: { status?: string; step?: string; progress?: number | null; error?: string | null } | null;
-        }[];
-      }>("/api/setup");
-      if (!s) {
+      const s = await getJson<{ queue?: string[]; components: PartRow[] }>("/api/setup");
+      if (!s?.components) {
         // A restart in between: the API comes back. Unless boot.py itself ended.
         await this.stillRunning();
         continue;
       }
+      const queue = s.queue ?? [];
       const mine = s.components.filter((c) => ids.includes(c.id));
       const done = mine.filter((c) => c.installed).length;
-      const busy = mine.find((c) => c.job && c.job.status === "running");
-      const failed = mine.find((c) => !c.installed && (c.error || c.job?.status === "failed"));
+      if (done === mine.length) return null;
+      const busy = mine.find((c) => c.job?.status === "running");
       const left = mine.filter((c) => !c.installed);
-      idle = !busy && left.length && !s.queue?.length ? idle + 1 : 0;
+      const failed = left.find(
+        (c) => c.job?.status !== "running" && !queue.includes(c.id) && (c.error || c.job?.status === "failed"),
+      );
+      idle = !busy && !queue.length ? idle + 1 : 0;
       if (failed || idle >= 3) {
-        const which = failed ?? left[0];
-        const why = failed?.error ?? failed?.job?.error ?? "it stopped without saying why";
-        if (retries >= 2) throw new Error(`${which.label ?? which.id} didn't install: ${why}`);
-        retries += 1;
-        this.log(`! ${which.label ?? which.id}: ${why}. Trying again (${retries} of 2).`);
-        const again = await postJson("/api/setup/queue", { components: left.map((c) => c.id) });
-        if (!again) throw new Error(`${which.label ?? which.id} didn't install: ${why}`);
-        idle = 0;
-        continue;
+        const w = failed ?? left[0];
+        return { id: w.id, label: w.label ?? w.id, why: failed?.error ?? failed?.job?.error ?? "it stopped without saying why" };
       }
       const line = busy ? `${busy.label ?? busy.id}: ${busy.job?.step ?? "installing"}` : "";
       if (line && line !== lastLine) {
@@ -271,8 +341,6 @@ export class Installer {
         message: busy ? `${busy.label ?? busy.id} — ${busy.job?.step ?? "installing"}` : `Installed ${done} of ${mine.length}`,
         fraction: mine.length ? (done + (busy?.job?.progress ?? 0)) / mine.length : null,
       });
-      if (done === mine.length) return;
-      if (Date.now() - started > 4 * 3600_000) throw new Error("The parts took too long to install.");
     }
   }
 
@@ -285,7 +353,7 @@ export class Installer {
     for (const id of ids) {
       const job = await postJson<{ id: string }>(`/api/setup/assets/${id}`, {});
       if (!job?.id) {
-        this.log(`! the ${id} pack could not start; install it later from Settings › Setup`);
+        this.note(`The ${id} pack could not start. Install it later from Settings › Setup.`);
         continue;
       }
       for (;;) {
@@ -298,7 +366,7 @@ export class Installer {
         this.report({ message: `${id[0].toUpperCase()}${id.slice(1)} pack — ${j.step ?? ""}`, fraction: j.progress ?? null });
         if (j.status === "done") break;
         if (j.status === "failed") {
-          this.log(`! the ${id} pack failed (${j.error ?? "unknown"}); install it later from Settings › Setup`);
+          this.note(`The ${id} pack was not installed (${j.error ?? "no reason given"}). Install it later from Settings › Setup.`);
           break;
         }
       }
@@ -403,4 +471,33 @@ export function sleep(ms: number): Promise<void> {
 
 export function sha256Text(s: string): string {
   return createHash("sha256").update(s).digest("hex");
+}
+
+/** The parts VidLift cannot run without, with all they need. */
+function needed(rows: PartRow[]): Set<string> {
+  const out = new Set<string>();
+  const add = (id: string) => {
+    if (out.has(id)) return;
+    out.add(id);
+    for (const n of rows.find((c) => c.id === id)?.needs ?? []) add(n);
+  };
+  REQUIRED_PARTS.forEach(add);
+  return out;
+}
+
+/** The parts that need `id`, directly or through another. */
+function needing(id: string, rows: PartRow[]): string[] {
+  const out: string[] = [];
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const c of rows) {
+      if (out.includes(c.id) || c.id === id) continue;
+      if ((c.needs ?? []).some((n) => n === id || out.includes(n))) {
+        out.push(c.id);
+        grew = true;
+      }
+    }
+  }
+  return out;
 }

@@ -133,6 +133,9 @@ export interface InstallProgress {
   log: string[];
   error: string | null;
   hardware: string | null;
+  /** What could not be done and was left for later (a part, a pack), shown
+   *  on the install page as it happens. */
+  notes: string[];
 }
 
 export interface VidLiftApi {

@@ -19,6 +19,7 @@ files:
   # build/ is not packed by default: the tray icons are read at run time.
   - build/tray.png
   - build/tray@2x.png
+  - build/icon.png
 
 icon: build/icon.png
 asar: true
