@@ -30,7 +30,7 @@ import { appendFileSync, existsSync, mkdirSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { Installer, layout } from "./bootstrap";
 import { fetchCatalog, NoAccess } from "./catalog";
-import { API_PORT, UI_PORT } from "./constants";
+import { API_PORT, SKIP_LICENSE, UI_PORT } from "./constants";
 import { devicePoll, deviceStart } from "./github";
 import { normalizeKey } from "./key";
 import { testKey } from "./keycheck";
@@ -765,8 +765,8 @@ async function activateLicense(raw: string): Promise<LicenseResult> {
   token ??= await state.loadToken();
   if (!token) return { ok: false, error: "no_token", message: "Sign in with GitHub first." };
   let result: LicenseResult;
-  if (process.env.VIDLIFT_SKIP_LICENSE === "1") {
-    // Test builds only: no licence server; GitHub access is still checked below.
+  if (SKIP_LICENSE) {
+    // Development runs only (constants.ts): no licence server; GitHub access is still checked below.
     result = { ok: true, status: "active", name: state.load().githubLogin ?? undefined };
   } else {
     result = await activate(key, token, null);

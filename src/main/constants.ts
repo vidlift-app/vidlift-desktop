@@ -12,10 +12,19 @@ export const RELEASE_PUBLIC_KEY = "zuGX+tuqk/8HbcN9Ez7NK0Zr45j0iQQr4V6h/WrXx1Q="
 export const GITHUB_CLIENT_ID = "Iv23liJQbS4wqBXJEMDe";
 export const GITHUB_API = "https://api.github.com";
 
-export const LICENSE_SERVER = process.env.VIDLIFT_LICENSE_SERVER || "https://license.vidlift.io";
+/** A development run (`electron .`, or Node for the tests), never a shipped
+ *  app (2026-10-31): only there may the environment point the licence check
+ *  at another server or key, or skip it. In a member's app those variables
+ *  would let anyone stand up their own licence server. */
+export const DEV_RUN = !process.versions.electron || !!(process as { defaultApp?: boolean }).defaultApp;
+const devEnv = (name: string): string | undefined => (DEV_RUN ? process.env[name] : undefined);
+
+export const LICENSE_SERVER = devEnv("VIDLIFT_LICENSE_SERVER") || "https://license.vidlift.io";
 /** The licence server's public key (`GET /api/license/public-key`, key id
  * lic-2026-10). Its private half lives only on the licence server's VM. */
-export const LICENSE_PUBLIC_KEY = process.env.VIDLIFT_LICENSE_PUBLIC_KEY || "Nb9dA42PmGueE2tBbg7JT2jBunyuyoRh69ORMF3hKPM=";
+export const LICENSE_PUBLIC_KEY = devEnv("VIDLIFT_LICENSE_PUBLIC_KEY") || "Nb9dA42PmGueE2tBbg7JT2jBunyuyoRh69ORMF3hKPM=";
+/** Development only: skip the licence server (GitHub access is still checked). */
+export const SKIP_LICENSE = devEnv("VIDLIFT_SKIP_LICENSE") === "1";
 
 export const SKOOL_URL = "https://www.skool.com/yta-insiders";
 export const SUPPORT_URL = "https://status.vidlift.io";
