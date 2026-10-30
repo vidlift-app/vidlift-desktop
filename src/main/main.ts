@@ -57,6 +57,10 @@ import type {
 // which is also Electron's default userData for productName "VidLift": the
 // shell keeps its own small files apart.
 app.setPath("userData", path.join(app.getPath("appData"), "VidLift Desktop"));
+// No Mac keychain (2026-10-31): Chromium keeps its own "VidLift Safe Storage"
+// key there, and an app without an Apple certificate is a new one to the
+// keychain after every update, so it asked for the login password.
+if (process.platform === "darwin") app.commandLine.appendSwitch("use-mock-keychain");
 crashReporter.start({ uploadToServer: false });
 if (process.platform === "win32") app.setAppUserModelId("io.vidlift.app");
 

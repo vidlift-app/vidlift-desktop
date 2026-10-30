@@ -50,19 +50,40 @@ export async function save(patch: Partial<ShellState>): Promise<ShellState> {
   return next;
 }
 
+/** The OS's own encryption on Windows (DPAPI: no prompt). Not on a Mac
+ * (2026-10-31): there it is the keychain, and an app without an Apple
+ * certificate is a new one to it after every update, so it asked for the
+ * login password ("VidLift wants to access key 'VidLift Safe Storage'").
+ * The file stays readable by this user only (0600), as the core's own copy
+ * of the token (user/data/github.json) is. */
+const osCrypt = (): boolean => process.platform !== "darwin" && safeStorage.isEncryptionAvailable();
+
+function seal(text: string): Buffer {
+  return osCrypt() ? safeStorage.encryptString(text) : Buffer.from(text, "utf-8");
+}
+
+/** The text, or null for what can't be read without a prompt: a file an
+ *  earlier build sealed with the Mac keychain ("v10..."), so the member
+ *  signs in again instead. */
+function unseal(data: Buffer): string | null {
+  if (osCrypt()) return safeStorage.decryptString(data);
+  if (process.platform === "darwin" && data.subarray(0, 3).toString("latin1") === "v10") return null;
+  return data.toString("utf-8");
+}
+
 export async function saveToken(token: string | null): Promise<void> {
   if (!token) {
     await fs.rm(file("secret.bin"), { force: true });
     return;
   }
-  const data = safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(token) : Buffer.from(token, "utf-8");
+  const data = seal(token);
   await fs.writeFile(file("secret.bin"), data, { mode: 0o600 });
 }
 
 export async function loadToken(): Promise<string | null> {
   try {
     const data = await fs.readFile(file("secret.bin"));
-    return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(data) : data.toString("utf-8");
+    return unseal(data);
   } catch {
     return null;
   }
@@ -77,7 +98,7 @@ export async function saveLicense(signed: { license: string; signature: string }
     return;
   }
   const text = JSON.stringify(signed);
-  const data = safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(text) : Buffer.from(text, "utf-8");
+  const data = seal(text);
   await fs.mkdir(app.getPath("userData"), { recursive: true });
   await fs.writeFile(file("license.bin"), data, { mode: 0o600 });
 }
@@ -85,7 +106,8 @@ export async function saveLicense(signed: { license: string; signature: string }
 export async function loadLicense(): Promise<{ license: string; signature: string } | null> {
   try {
     const data = await fs.readFile(file("license.bin"));
-    const text = safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(data) : data.toString("utf-8");
+    const text = unseal(data);
+    if (text === null) return null;
     const v = JSON.parse(text) as { license?: unknown; signature?: unknown };
     return typeof v.license === "string" && typeof v.signature === "string" ? { license: v.license, signature: v.signature } : null;
   } catch {
