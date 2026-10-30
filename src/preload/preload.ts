@@ -44,6 +44,8 @@ const api: VidLiftApi = {
   chooseFolder: (title, start) => call("chooseFolder", title, start),
   checkFolder: (path) => call("checkFolder", path),
   checkOldInstall: (path) => call("checkOldInstall", path),
+  oldFolder: () => call("oldFolder"),
+  trashOldFolder: () => call("trashOldFolder"),
   install: (plan) => call("install", plan),
   onProgress,
   finish: (opts) => call("finish", opts),

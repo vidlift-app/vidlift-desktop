@@ -43,6 +43,7 @@ import type {
   FolderCheck,
   InstallPlan,
   LicenseResult,
+  OldFolder,
   OldInstall,
   ShellInfo,
   ShellState,
@@ -682,6 +683,8 @@ function registerIpc(): void {
 
   handle("checkFolder", (_e, p: string) => checkFolder(String(p ?? "")));
   handle("checkOldInstall", (_e, p: string) => checkOldInstall(String(p ?? "")));
+  handle("oldFolder", () => oldFolder());
+  handle("trashOldFolder", () => trashOldFolder());
 
   handle("install", (e, plan: InstallPlan) => install(e.sender, plan));
 
@@ -859,6 +862,48 @@ async function checkFolder(p: string): Promise<FolderCheck> {
   }
   const message = freeGb !== null && freeGb < 20 ? "Less than 20 GB free on this drive" : null;
   return { path: dir, ok: true, freeGb, message };
+}
+
+/** `a` is `b` or inside it. */
+function within(a: string, b: string): boolean {
+  const rel = path.relative(path.resolve(b), path.resolve(a));
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+/** The old install the member imported from, when it is still there and is
+ *  safe to remove: a VidLift folder (a `user` folder), not the new install
+ *  nor anything holding it. Null otherwise. */
+async function importedOldFolder(): Promise<string | null> {
+  const st = state.load();
+  const dir = st.oldFolder ? path.resolve(st.oldFolder) : "";
+  if (!dir || !(await isDir(path.join(dir, "user")))) return null;
+  const target = st.installDir || state.defaultInstallDir();
+  if (within(dir, target) || within(target, dir)) return null;
+  // the new install is complete before the old one may go
+  if (!existsSync(path.join(target, "app", "tools", "boot.py"))) return null;
+  return dir;
+}
+
+async function oldFolder(): Promise<OldFolder | null> {
+  const dir = await importedOldFolder();
+  return dir ? { path: dir, gb: round1((await dirSize(dir)) / GB) } : null;
+}
+
+/** "Move to Trash" on the wizard's last page (2026-10-30, the owner): the old
+ *  folder to the Trash or Recycle Bin, where it can still be restored. */
+async function trashOldFolder(): Promise<{ ok: boolean; message: string | null }> {
+  const dir = await importedOldFolder();
+  if (!dir) return { ok: false, message: "The old folder is already gone." };
+  try {
+    await shell.trashItem(dir);
+  } catch {
+    return {
+      ok: false,
+      message: "It couldn't be moved. Close the old VidLift if it's open, then try again.",
+    };
+  }
+  state.save({ oldFolder: null });
+  return { ok: true, message: null };
 }
 
 async function checkOldInstall(p: string): Promise<OldInstall> {

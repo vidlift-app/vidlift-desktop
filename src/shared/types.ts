@@ -89,6 +89,13 @@ export interface OldInstall {
   message: string | null;
 }
 
+/** The old zip install a member imported from, on the wizard's last page
+ *  (2026-10-30): its folder and size, for "Move to Trash". */
+export interface OldFolder {
+  path: string;
+  gb: number;
+}
+
 export type VoiceEngine = "elevenlabs" | "fish" | "minimax" | "ai33";
 
 /** Who narrates new videos: Kokoro on this computer, or the member's own
@@ -137,6 +144,10 @@ export interface VidLiftApi {
   chooseFolder(title: string, start?: string): Promise<string | null>;
   checkFolder(path: string): Promise<FolderCheck>;
   checkOldInstall(path: string): Promise<OldInstall>;
+  /** The imported-from old folder, still there, or null. */
+  oldFolder(): Promise<OldFolder | null>;
+  /** Move the imported-from old folder to the Trash / Recycle Bin. */
+  trashOldFolder(): Promise<{ ok: boolean; message: string | null }>;
   install(plan: InstallPlan): Promise<void>;
   onProgress(cb: (p: InstallProgress) => void): () => void;
   finish(opts: { crashReports: boolean; openAtLogin: boolean }): Promise<void>;

@@ -513,3 +513,8 @@ h1.title { font: 600 24px/1.25 var(--font-display); letter-spacing: -0.01em; mar
 
 /* the default install folder, marked (2026-10-30) */
 .path-box .path-tag { flex: none; margin-left: auto; }
+
+/* the old folder on the last page (2026-10-30) */
+.old-folder { display: flex; flex-direction: column; gap: 10px; }
+.old-folder-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.old-folder-path { margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }

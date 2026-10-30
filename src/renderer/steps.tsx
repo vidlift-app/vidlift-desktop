@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { DeviceCode, FolderCheck, InstallPlan, InstallProgress, KeyCheck, LicenseResult, OldInstall, VoicePlan } from "../shared/types";
+import type { DeviceCode, FolderCheck, InstallPlan, InstallProgress, KeyCheck, LicenseResult, OldFolder, OldInstall, VoicePlan } from "../shared/types";
 import {
   ALWAYS,
   FOOTAGE_KEYS,
@@ -1004,9 +1004,32 @@ export function InstallStep({ draft, go }: StepProps) {
 
 /* ------------------------------------------------------------ 9. done */
 
-export function DoneStep({ draft, update }: StepProps) {
+export function DoneStep({ info, draft, update }: StepProps) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // The old zip install this one was imported from (2026-10-30, the owner):
+  // offered for the Trash, and a word not to start it again (both use the
+  // same port, so the two would clash).
+  const [old, setOld] = useState<OldFolder | null>(null);
+  const [trashed, setTrashed] = useState<number | null>(null);
+  const [trashing, setTrashing] = useState(false);
+  const [trashErr, setTrashErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (draft.oldChoice !== "old") return;
+    api.oldFolder().then(setOld, () => setOld(null));
+  }, [draft.oldChoice]);
+  const bin = info.platform === "darwin" ? "Trash" : "Recycle Bin";
+  const trash = async () => {
+    if (!old) return;
+    setTrashing(true);
+    setTrashErr(null);
+    const r = await api.trashOldFolder().catch((e) => ({ ok: false, message: errText(e) }));
+    setTrashing(false);
+    if (r.ok) {
+      setTrashed(old.gb);
+      setOld(null);
+    } else setTrashErr(r.message);
+  };
   const open = async () => {
     setBusy(true);
     setErr(null);
@@ -1052,6 +1075,41 @@ export function DoneStep({ draft, update }: StepProps) {
           </div>
         )}
       </div>
+      {old && (
+        <div className="section old-folder">
+          <div className="old-folder-head">
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 500 }}>Your old VidLift folder</div>
+              <div className="small muted mono old-folder-path" title={old.path}>
+                {old.path} · {gb(old.gb)}
+              </div>
+            </div>
+            <Button disabled={trashing} onClick={() => void trash()}>
+              {trashing ? "Moving…" : `Move to ${bin}`}
+            </Button>
+          </div>
+          <div className="row small warn-text">
+            <IconAlert />
+            <span>Don't start the old VidLift any more: it would clash with this one.</span>
+          </div>
+          {trashErr && (
+            <div className="row small danger-text">
+              <IconAlert />
+              <span>{trashErr}</span>
+            </div>
+          )}
+        </div>
+      )}
+      {trashed != null && (
+        <div className="section">
+          <div className="row small">
+            <IconCheck />
+            <span>
+              Moved to the {bin}. Empty it to free {gb(trashed)}.
+            </span>
+          </div>
+        </div>
+      )}
     </Page>
   );
 }
