@@ -510,3 +510,6 @@ h1.title { font: 600 24px/1.25 var(--font-display); letter-spacing: -0.01em; mar
   .bar.indet > i { animation: none; left: 0; width: 100%; opacity: 0.5; }
   .switch, .switch::after, .toggle-link svg { transition: none; }
 }
+
+/* the default install folder, marked (2026-10-30) */
+.path-box .path-tag { flex: none; margin-left: auto; }

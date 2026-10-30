@@ -419,8 +419,11 @@ function LicenseCard({ res, onRetry, onOtherAccount }: { res: LicenseResult; onR
 
 /* ------------------------------------------------------------ 4. location */
 
-export function LocationStep({ draft, update, go, back }: StepProps) {
+export function LocationStep({ info, draft, update, go, back }: StepProps) {
   const dir = draft.installDir;
+  // The default stays chosen unless the member picks another (2026-10-30, the
+  // owner: "keep the default location selected in case user does not want to").
+  const isDefault = dir === info.defaultInstallDir;
   const [check, setCheck] = useState<FolderCheck | null>(null);
   const [checkErr, setCheckErr] = useState<string | null>(null);
 
@@ -458,11 +461,16 @@ export function LocationStep({ draft, update, go, back }: StepProps) {
         <div className="row">
           <div className="path-box selectable" title={dir}>
             <span>{dir}</span>
+            {isDefault && <span className="tag path-tag">Default</span>}
           </div>
           <Button icon={<IconFolder />} onClick={() => void change()}>
             Change…
           </Button>
+          {!isDefault && (
+            <Button onClick={() => update({ installDir: info.defaultInstallDir })}>Use default</Button>
+          )}
         </div>
+
         {!check && !checkErr && <WaitLine>Checking this folder</WaitLine>}
         {check && (
           <div className="dim">

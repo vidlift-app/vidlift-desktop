@@ -33,7 +33,11 @@ win:
         - x64
 
 nsis:
-  oneClick: true
+  # Assisted, not one click (2026-10-30, the owner: "let user [choose] where
+  # to install, but keep the default location selected"): a folder page with
+  # %LOCALAPPDATA%\Programs\VidLift filled in. Per user, so no admin prompt.
+  oneClick: false
+  allowToChangeInstallationDirectory: true
   perMachine: false
   artifactName: VidLift-Setup.${ext}
   createDesktopShortcut: true
