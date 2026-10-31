@@ -188,6 +188,32 @@ function windowDefaults(): BrowserWindowConstructorOptions {
   };
 }
 
+/** Windows: the main window has no title bar strip. Its page fills the window
+ * and the three window buttons are drawn over the page's top right. Only the
+ * shell knows this, so old dashboards work too and a browser never sees it. */
+const OWN_TITLE_BAR = process.platform === "win32";
+const BAR_HEIGHT = 48;
+const BAR_SYMBOL = { dark: "#e8e8e8", light: "#141413" };
+/** Every page of that window, with its top bar or without one. Regions ignore
+ * stacking, so anything drawn over the bar has to give the clicks back. */
+const WINDOW_CSS = `
+.topbar-inner { -webkit-app-region: drag; padding-right: 140px !important; }
+.topbar-inner :is(button, a, input, select, textarea, label, summary, [role="button"], [tabindex]) { -webkit-app-region: no-drag; }
+html:not(:has(.topbar-inner))::before {
+  content: ""; position: fixed; top: 0; left: 0; right: 140px; height: ${BAR_HEIGHT}px;
+  -webkit-app-region: drag; z-index: 2147483647;
+}
+dialog, [role="dialog"], .panel-backdrop { -webkit-app-region: no-drag; }
+`;
+
+function mainWindowFrame(): BrowserWindowConstructorOptions {
+  if (!OWN_TITLE_BAR) return {};
+  return {
+    titleBarStyle: "hidden",
+    titleBarOverlay: { color: "#00000000", symbolColor: BAR_SYMBOL.dark, height: BAR_HEIGHT },
+  };
+}
+
 function page(name: "index" | "waiting"): string | null {
   const f = path.join(RENDERER, `${name}.html`);
   return existsSync(f) ? f : null;
@@ -240,7 +266,7 @@ function createMain(hidden: boolean): void {
   const st = state.load();
   const b = placeWindow(st.windowBounds ?? null);
   pendingMaximize = !!st.windowBounds?.maximized;
-  const win = new BrowserWindow({ ...windowDefaults(), ...b, minWidth: 1100, minHeight: 700 });
+  const win = new BrowserWindow({ ...windowDefaults(), ...mainWindowFrame(), ...b, minWidth: 1100, minHeight: 700 });
   mainWin = win;
   watchPage(win.webContents, true);
   win.once("ready-to-show", () => {
@@ -614,6 +640,11 @@ function watchPage(wc: WebContents, isMain: boolean): void {
     }, 1000);
   });
   if (!isMain) return;
+  if (OWN_TITLE_BAR) {
+    wc.on("dom-ready", () => {
+      wc.insertCSS(WINDOW_CSS).catch((e) => logLine(`window style: ${String(e)}`));
+    });
+  }
   wc.on("did-fail-load", (_e, code, desc, url, isMainFrame) => {
     if (!isMainFrame || code === -3 /* ERR_ABORTED: a newer load */ || !isDashboard(url)) return;
     logLine(`dashboard did not load: ${desc} (${code})`);
@@ -689,6 +720,12 @@ function registerIpc(): void {
   }));
 
   handle("saveState", (_e, patch: Partial<ShellState>) => state.save(patch ?? {}));
+
+  // The window buttons follow the page's theme, which can differ from the OS's.
+  handle("windowTheme", (e, theme: string) => {
+    if (!OWN_TITLE_BAR || !mainWin || BrowserWindow.fromWebContents(e.sender) !== mainWin) return;
+    mainWin.setTitleBarOverlay({ symbolColor: theme === "light" ? BAR_SYMBOL.light : BAR_SYMBOL.dark });
+  });
 
   handle("githubStart", () => deviceStart());
 

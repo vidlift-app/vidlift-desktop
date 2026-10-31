@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 // window.vidlift: the wizard's and the start-up page's way to the main
 // process (src/shared/types.ts VidLiftApi). The page runs sandboxed with
 // context isolation, so this file may only require "electron" -- no other
@@ -56,3 +57,11 @@ const api: VidLiftApi = {
 };
 
 contextBridge.exposeInMainWorld("vidlift", api);
+
+// The shell's window buttons sit on the page, so they follow its theme.
+addEventListener("DOMContentLoaded", () => {
+  const root = document.documentElement;
+  const send = () => void call("windowTheme", root.dataset.theme === "light" ? "light" : "dark").catch(() => undefined);
+  send();
+  new MutationObserver(send).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
+});
