@@ -198,6 +198,10 @@ const BAR_SYMBOL = { dark: "#e8e8e8", light: "#141413" };
  * stacking, so anything drawn over the bar has to give the clicks back. */
 const WINDOW_CSS = `
 .topbar-inner { -webkit-app-region: drag; padding-right: 140px !important; }
+@media (min-width: 1101px) {
+  .topbar-inner .tool-switch { left: calc(50% - 70px); }
+  .topbar .topbar-inner > .hnav { max-width: calc(50% - 14.75rem - 70px); }
+}
 .topbar-inner :is(button, a, input, select, textarea, label, summary, [role="button"], [tabindex]) { -webkit-app-region: no-drag; }
 html:not(:has(.topbar-inner))::before {
   content: ""; position: fixed; top: 0; left: 0; right: 140px; height: ${BAR_HEIGHT}px;
