@@ -254,7 +254,7 @@ function openWizard(): void {
     // Installing: the window goes to the tray and the install carries on.
     e.preventDefault();
     win.hide();
-    void stillRunningNotice(true);
+    stillRunningNotice(true);
   });
   win.on("closed", () => {
     if (wizardWin === win) wizardWin = null;
@@ -288,7 +288,7 @@ function createMain(hidden: boolean): void {
     if (quitting) return;
     e.preventDefault();
     win.hide();
-    void stillRunningNotice();
+    stillRunningNotice();
   });
   win.on("closed", () => {
     if (mainWin === win) mainWin = null;
@@ -297,22 +297,22 @@ function createMain(hidden: boolean): void {
 
 /** The first time the window is closed, say where VidLift went: a member
  * who closes it and sees nothing may think it quit, or start it again. */
-async function stillRunningNotice(installingNow = false): Promise<void> {
+/** The window closed but VidLift did not: every time, so nobody takes a closed
+ * window for a closed app (2026-11-01, the owner). */
+function stillRunningNotice(installingNow = false): void {
   if (!Notification.isSupported()) return;
-  if (!installingNow) {
-    if (state.load().trayNoticeShown) return;
-    await state.save({ trayNoticeShown: true });
-  }
   const where = process.platform === "darwin" ? "in the menu bar" : "by the clock";
   const n = new Notification(
     installingNow
       ? { title: "VidLift is still installing", body: `Click the VidLift icon ${where} to watch it.` }
       : {
-          title: "VidLift is still running",
-          body: `Videos carry on. Click the VidLift icon ${where} to open it again, or right-click it to quit.`,
+          title: "VidLift is running in the background",
+          body: `To close it fully, right-click the VidLift icon ${where} and choose Quit VidLift.`,
         },
   );
   n.on("click", () => showFront());
+  n.on("show", () => logLine("close notice shown"));
+  n.on("failed", (_e, why) => logLine(`close notice failed: ${why}`));
   n.show();
 }
 

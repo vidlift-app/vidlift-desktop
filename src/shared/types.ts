@@ -25,8 +25,6 @@ export interface ShellState {
   crashReports: boolean;
   openAtLogin: boolean;
   windowBounds?: { x?: number; y?: number; width: number; height: number; maximized?: boolean } | null;
-  /** The "still running" notice was shown, on the first close (once only). */
-  trayNoticeShown?: boolean;
 }
 
 export type WizardStep =
