@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { DeviceCode, FolderCheck, InstallPlan, InstallProgress, KeyCheck, LicenseResult, OldFolder, OldInstall, VoicePlan } from "../shared/types";
+import type { DeviceCode, FolderCheck, InstallPlan, InstallProgress, KeyCheck, LicenseResult, VoicePlan } from "../shared/types";
 import {
   ALWAYS,
   FOOTAGE_KEYS,
@@ -460,7 +460,7 @@ export function LocationStep({ info, draft, update, go, back }: StepProps) {
       title="Where to install"
       left={<BackButton onClick={back} />}
       right={
-        <Button variant="primary" disabled={blocked} onClick={() => go("import")}>
+        <Button variant="primary" disabled={blocked} onClick={() => go("ai")}>
           Continue
         </Button>
       }
@@ -502,99 +502,7 @@ export function LocationStep({ info, draft, update, go, back }: StepProps) {
   );
 }
 
-/* ------------------------------------------------------------ 5. old VidLift */
-
-export function ImportStep({ draft, update, go, back }: StepProps) {
-  const [found, setFound] = useState<OldInstall | null>(null);
-  const [busy, setBusy] = useState(false);
-  const folder = draft.oldFolder;
-
-  useEffect(() => {
-    if (draft.oldChoice !== "old" || !folder) {
-      setFound(null);
-      return;
-    }
-    let cancelled = false;
-    setBusy(true);
-    api
-      .checkOldInstall(folder)
-      .then(
-        (r) => !cancelled && setFound(r),
-        (e) => !cancelled && setFound({ ok: false, path: folder, userGb: 0, message: errText(e) }),
-      )
-      .finally(() => !cancelled && setBusy(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [folder, draft.oldChoice]);
-
-  const pick = async () => {
-    const p = await api.chooseFolder("Your old VidLift folder", folder ?? undefined);
-    if (p) update({ oldFolder: p });
-  };
-
-  const ready = draft.oldChoice === "first" || (draft.oldChoice === "old" && !!found?.ok && !busy);
-
-  const choice = (id: "first" | "old", label: string) => (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={draft.oldChoice === id}
-      className={`choice${draft.oldChoice === id ? " on" : ""}`}
-      onClick={() => update({ oldChoice: id })}
-    >
-      <span className="radio" />
-      {label}
-    </button>
-  );
-
-  return (
-    <Page
-      title="Your old VidLift"
-      left={<BackButton onClick={back} />}
-      right={
-        <Button variant="primary" disabled={!ready} onClick={() => go("ai", draft.oldChoice === "first" ? { oldFolder: null } : {})}>
-          Continue
-        </Button>
-      }
-    >
-      <div className="section stack" role="radiogroup" aria-label="Your old VidLift">
-        {choice("first", "This is my first VidLift")}
-        {choice("old", "I used VidLift before (the zip version)")}
-      </div>
-      {draft.oldChoice === "old" && (
-        <div className="stack" style={{ marginTop: 16 }}>
-          <div className="row">
-            <div className={`path-box${folder ? " selectable" : " empty"}`} title={folder ?? undefined}>
-              <span>{folder ?? "No folder chosen"}</span>
-            </div>
-            <Button icon={<IconFolder />} onClick={() => void pick()}>
-              Choose…
-            </Button>
-          </div>
-          {busy && <WaitLine>Looking for your videos and settings</WaitLine>}
-          {!busy && found?.ok && (
-            <div className="row">
-              <span className="success-text" style={{ display: "flex" }}>
-                <IconCheck />
-              </span>
-              <span className="dim">Found your videos and settings · {gb(found.userGb)} will be copied</span>
-            </div>
-          )}
-          {!busy && found && !found.ok && (
-            <div className="row small danger-text">
-              <IconAlert />
-              <span>{found.message ?? "No VidLift found in this folder."}</span>
-            </div>
-          )}
-          <div className="small muted">Your old folder stays as it is. Delete it once the new app works.</div>
-        </div>
-      )}
-    </Page>
-  );
-}
-
-/* ------------------------------------------------------------ 6. set up AI */
+/* ------------------------------------------------------------ 5. set up AI */
 
 /** Each key's last answer, by variable, for the value it was asked about:
  * coming back to this step shows it again without asking twice. */
@@ -824,7 +732,7 @@ export function AiStep({ draft, update, go, back }: StepProps) {
   );
 }
 
-/* ------------------------------------------------------------ 7. parts */
+/* ------------------------------------------------------------ 6. parts */
 
 export function PartsStep({ draft, update, go, back }: StepProps) {
   const parts = new Set(draft.parts);
@@ -912,7 +820,7 @@ export function PartsStep({ draft, update, go, back }: StepProps) {
   );
 }
 
-/* ------------------------------------------------------------ 8. install */
+/* ------------------------------------------------------------ 7. install */
 
 export function InstallStep({ draft, go }: StepProps) {
   const [p, setP] = useState<InstallProgress | null>(null);
@@ -925,7 +833,6 @@ export function InstallStep({ draft, go }: StepProps) {
   const plan: InstallPlan = {
     parts: draft.parts,
     packs: draft.packs,
-    oldFolder: draft.oldChoice === "old" ? draft.oldFolder : null,
     keys: draft.keys,
     voice: draft.voice,
   };
@@ -959,7 +866,7 @@ export function InstallStep({ draft, go }: StepProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const rows = INSTALL_STEPS.filter((s) => s.id !== "import" || plan.oldFolder);
+  const rows = INSTALL_STEPS;
   const done = new Set(p?.done ?? []);
   const current = p?.step ?? "prepare";
   const log = p?.log ?? [];
@@ -1042,34 +949,11 @@ export function InstallStep({ draft, go }: StepProps) {
   );
 }
 
-/* ------------------------------------------------------------ 9. done */
+/* ------------------------------------------------------------ 8. done */
 
-export function DoneStep({ info, draft, update }: StepProps) {
+export function DoneStep({ draft, update }: StepProps) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  // The old zip install this one was imported from (2026-10-30, the owner):
-  // offered for the Trash, and a word not to start it again (both use the
-  // same port, so the two would clash).
-  const [old, setOld] = useState<OldFolder | null>(null);
-  const [trashed, setTrashed] = useState<number | null>(null);
-  const [trashing, setTrashing] = useState(false);
-  const [trashErr, setTrashErr] = useState<string | null>(null);
-  useEffect(() => {
-    if (draft.oldChoice !== "old") return;
-    api.oldFolder().then(setOld, () => setOld(null));
-  }, [draft.oldChoice]);
-  const bin = info.platform === "darwin" ? "Trash" : "Recycle Bin";
-  const trash = async () => {
-    if (!old) return;
-    setTrashing(true);
-    setTrashErr(null);
-    const r = await api.trashOldFolder().catch((e) => ({ ok: false, message: errText(e) }));
-    setTrashing(false);
-    if (r.ok) {
-      setTrashed(old.gb);
-      setOld(null);
-    } else setTrashErr(r.message);
-  };
   const open = async () => {
     setBusy(true);
     setErr(null);
@@ -1115,41 +999,6 @@ export function DoneStep({ info, draft, update }: StepProps) {
           </div>
         )}
       </div>
-      {old && (
-        <div className="section old-folder">
-          <div className="old-folder-head">
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 500 }}>Your old VidLift folder</div>
-              <div className="small muted mono old-folder-path" title={old.path}>
-                {old.path} · {gb(old.gb)}
-              </div>
-            </div>
-            <Button disabled={trashing} onClick={() => void trash()}>
-              {trashing ? "Moving…" : `Move to ${bin}`}
-            </Button>
-          </div>
-          <div className="row small warn-text">
-            <IconAlert />
-            <span>Don't start the old VidLift any more: it would clash with this one.</span>
-          </div>
-          {trashErr && (
-            <div className="row small danger-text">
-              <IconAlert />
-              <span>{trashErr}</span>
-            </div>
-          )}
-        </div>
-      )}
-      {trashed != null && (
-        <div className="section">
-          <div className="row small">
-            <IconCheck />
-            <span>
-              Moved to the {bin}. Empty it to free {gb(trashed)}.
-            </span>
-          </div>
-        </div>
-      )}
     </Page>
   );
 }

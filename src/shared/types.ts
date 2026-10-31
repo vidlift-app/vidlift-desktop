@@ -20,7 +20,6 @@ export interface ShellState {
   githubLogin: string | null;
   parts: string[] | null;
   packs: string[] | null;
-  oldFolder: string | null;
   /** The narrator the member chose on "Set up AI" (not secret, so kept). */
   voice: VoicePlan | null;
   crashReports: boolean;
@@ -35,7 +34,6 @@ export type WizardStep =
   | "license"
   | "github"
   | "location"
-  | "import"
   | "ai"
   | "parts"
   | "install"
@@ -82,20 +80,6 @@ export interface FolderCheck {
   message: string | null;
 }
 
-export interface OldInstall {
-  ok: boolean;
-  path: string;
-  userGb: number;
-  message: string | null;
-}
-
-/** The old zip install a member imported from, on the wizard's last page
- *  (2026-10-30): its folder and size, for "Move to Trash". */
-export interface OldFolder {
-  path: string;
-  gb: number;
-}
-
 export type VoiceEngine = "elevenlabs" | "fish" | "minimax" | "ai33";
 
 /** Who narrates new videos: Kokoro on this computer, or the member's own
@@ -108,7 +92,6 @@ export interface VoicePlan {
 export interface InstallPlan {
   parts: string[];
   packs: string[];
-  oldFolder: string | null;
   keys: Record<string, string>;
   voice: VoicePlan;
 }
@@ -146,11 +129,6 @@ export interface VidLiftApi {
   activateLicense(key: string): Promise<LicenseResult>;
   chooseFolder(title: string, start?: string): Promise<string | null>;
   checkFolder(path: string): Promise<FolderCheck>;
-  checkOldInstall(path: string): Promise<OldInstall>;
-  /** The imported-from old folder, still there, or null. */
-  oldFolder(): Promise<OldFolder | null>;
-  /** Move the imported-from old folder to the Trash / Recycle Bin. */
-  trashOldFolder(): Promise<{ ok: boolean; message: string | null }>;
   install(plan: InstallPlan): Promise<void>;
   onProgress(cb: (p: InstallProgress) => void): () => void;
   finish(opts: { crashReports: boolean; openAtLogin: boolean }): Promise<void>;

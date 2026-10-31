@@ -5,7 +5,6 @@ export const WIZARD_STEPS: { id: WizardStep; label: string }[] = [
   { id: "license", label: "Licence" },
   { id: "github", label: "GitHub" },
   { id: "location", label: "Location" },
-  { id: "import", label: "Your old VidLift" },
   { id: "ai", label: "Set up AI" },
   { id: "parts", label: "Parts" },
   { id: "install", label: "Install" },
@@ -17,7 +16,6 @@ export const stepIndex = (s: WizardStep) => WIZARD_STEPS.findIndex((x) => x.id =
 /** The main process's install steps (src/main/bootstrap.ts STEPS), in order. */
 export const INSTALL_STEPS: { id: string; label: string }[] = [
   { id: "prepare", label: "Folders" },
-  { id: "import", label: "Your videos and settings" },
   { id: "uv", label: "Python installer" },
   { id: "core", label: "VidLift" },
   { id: "python", label: "Python and core packages" },

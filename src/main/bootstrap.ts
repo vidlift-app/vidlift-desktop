@@ -36,7 +36,7 @@ interface PartRow {
 
 export { describeHardware } from "./hardware";
 
-export const STEPS = ["prepare", "import", "uv", "core", "python", "parts", "packs", "finish"] as const;
+export const STEPS = ["prepare", "uv", "core", "python", "parts", "packs", "finish"] as const;
 
 export interface Layout {
   install: string;
@@ -129,7 +129,6 @@ export class Installer {
   async run(plan: InstallPlan): Promise<void> {
     try {
       await this.prepare(plan);
-      await this.importOld(plan.oldFolder);
       await this.uv();
       await this.core();
       await this.python();
@@ -164,26 +163,6 @@ export class Installer {
   private async whoAmI(): Promise<string | null> {
     const { whoAmI } = await import("./github");
     return whoAmI(this.token);
-  }
-
-  /** The member's videos, keys and templates from an old zip install. Copied,
-   * never moved: the old folder keeps working until they delete it. The
-   * runtime is never carried over -- its venvs hold absolute paths. */
-  private async importOld(oldFolder: string | null): Promise<void> {
-    if (!oldFolder) {
-      this.finished("import");
-      return;
-    }
-    this.begin("import", "Copying your videos, keys and templates");
-    const from = path.join(oldFolder, "user");
-    await fs.cp(from, this.l.user, {
-      recursive: true,
-      force: false,
-      errorOnExist: false,
-      // A copy of the old install's GitHub sign-in would replace this one.
-      filter: (src) => !/[\\/]data[\\/](github\.json|license\.json|machine-id|supervisor\.[a-z]+)$/.test(src),
-    });
-    this.finished("import");
   }
 
   private async uv(): Promise<void> {

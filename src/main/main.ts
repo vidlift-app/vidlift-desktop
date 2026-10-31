@@ -44,8 +44,6 @@ import type {
   InstallPlan,
   InstallProgress,
   LicenseResult,
-  OldFolder,
-  OldInstall,
   ShellInfo,
   ShellState,
   ShellStatus,
@@ -720,9 +718,6 @@ function registerIpc(): void {
   });
 
   handle("checkFolder", (_e, p: string) => checkFolder(String(p ?? "")));
-  handle("checkOldInstall", (_e, p: string) => checkOldInstall(String(p ?? "")));
-  handle("oldFolder", () => oldFolder());
-  handle("trashOldFolder", () => trashOldFolder());
 
   handle("install", (e, plan: InstallPlan) => install(e.sender, plan));
 
@@ -798,7 +793,6 @@ async function install(sender: WebContents, plan: InstallPlan): Promise<void> {
     installDir: dir,
     parts: plan.parts,
     packs: plan.packs,
-    oldFolder: plan.oldFolder,
     voice: plan.voice ?? null,
     step: "install",
   });
@@ -813,7 +807,6 @@ async function install(sender: WebContents, plan: InstallPlan): Promise<void> {
     .run({
       parts: plan.parts ?? [],
       packs: plan.packs ?? [],
-      oldFolder: plan.oldFolder ?? null,
       keys: plan.keys ?? {},
       voice: plan.voice ?? { mode: "local" },
     })
@@ -941,104 +934,6 @@ async function checkFolder(p: string): Promise<FolderCheck> {
   const message = freeGb !== null && freeGb < 20 ? "Less than 20 GB free on this drive" : null;
   return { path: dir, ok: true, freeGb, message };
 }
-
-/** `a` is `b` or inside it. */
-function within(a: string, b: string): boolean {
-  const rel = path.relative(path.resolve(b), path.resolve(a));
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
-}
-
-/** The old install the member imported from, when it is still there and is
- *  safe to remove: a VidLift folder (a `user` folder), not the new install
- *  nor anything holding it. Null otherwise. */
-async function importedOldFolder(): Promise<string | null> {
-  const st = state.load();
-  const dir = st.oldFolder ? path.resolve(st.oldFolder) : "";
-  if (!dir || !(await isDir(path.join(dir, "user")))) return null;
-  const target = st.installDir || state.defaultInstallDir();
-  if (within(dir, target) || within(target, dir)) return null;
-  // the new install is complete before the old one may go
-  if (!existsSync(path.join(target, "app", "tools", "boot.py"))) return null;
-  return dir;
-}
-
-async function oldFolder(): Promise<OldFolder | null> {
-  const dir = await importedOldFolder();
-  return dir ? { path: dir, gb: round1((await dirSize(dir)) / GB) } : null;
-}
-
-/** "Move to Trash" on the wizard's last page (2026-10-30, the owner): the old
- *  folder to the Trash or Recycle Bin, where it can still be restored. */
-async function trashOldFolder(): Promise<{ ok: boolean; message: string | null }> {
-  const dir = await importedOldFolder();
-  if (!dir) return { ok: false, message: "The old folder is already gone." };
-  try {
-    await shell.trashItem(dir);
-  } catch {
-    return {
-      ok: false,
-      message: "It couldn't be moved. Close the old VidLift if it's open, then try again.",
-    };
-  }
-  state.save({ oldFolder: null });
-  return { ok: true, message: null };
-}
-
-async function checkOldInstall(p: string): Promise<OldInstall> {
-  let dir = p ? path.resolve(p) : "";
-  const notVidLift = (message = "This isn't a VidLift folder. Pick the folder that has the user folder and Start VidLift in it.") =>
-    ({ ok: false, path: dir, userGb: 0, message }) satisfies OldInstall;
-  if (!p) return notVidLift();
-  // The member picked the user folder itself.
-  if (path.basename(dir).toLowerCase() === "user" && (await isDir(path.join(dir, "data"))) && !(await isDir(path.join(dir, "user")))) {
-    dir = path.dirname(dir);
-  }
-  const user = path.join(dir, "user");
-  if (!(await isDir(user))) return notVidLift();
-  const target = state.load().installDir || state.defaultInstallDir();
-  if (samePath(dir, target)) return notVidLift("That's where the new VidLift goes. Pick your old VidLift folder.");
-  const looksRight =
-    (await exists(path.join(dir, "app", "tools", "boot.py"))) ||
-    (await isDir(path.join(user, "data"))) ||
-    (await exists(path.join(user, ".env")));
-  if (!looksRight) return notVidLift();
-  const bytes = await dirSize(user);
-  return { ok: true, path: dir, userGb: round1(bytes / GB), message: null };
-}
-
-/** The size of a folder, without following links (the runtime's junctions),
- * and bounded: a huge folder gives a lower figure rather than a long wait. */
-async function dirSize(root: string, maxEntries = 300_000, maxMs = 15_000): Promise<number> {
-  const t0 = Date.now();
-  let total = 0;
-  let seen = 0;
-  const stack = [root];
-  while (stack.length) {
-    const d = stack.pop()!;
-    let entries: import("node:fs").Dirent[];
-    try {
-      entries = await fs.readdir(d, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const ent of entries) {
-      if (++seen > maxEntries || Date.now() - t0 > maxMs) return total;
-      const p = path.join(d, ent.name);
-      if (ent.isSymbolicLink()) continue;
-      if (ent.isDirectory()) stack.push(p);
-      else if (ent.isFile()) {
-        try {
-          total += (await fs.lstat(p)).size;
-        } catch {
-          /* gone meanwhile */
-        }
-      }
-    }
-  }
-  return total;
-}
-
-// --- small helpers ----------------------------------------------------------------
 
 /** One line in <install>/user/data/logs/shell.log (or the shell's own folder
  * before VidLift is installed). */

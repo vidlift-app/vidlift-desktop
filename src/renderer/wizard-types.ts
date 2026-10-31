@@ -6,8 +6,6 @@ export interface Draft {
   githubLogin: string | null;
   license: LicenseResult | null;
   installDir: string;
-  oldChoice: "first" | "old" | null;
-  oldFolder: string | null;
   parts: string[];
   packs: string[];
   keys: Record<string, string>;

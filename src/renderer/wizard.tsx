@@ -1,4 +1,4 @@
-// The install wizard: nine steps in one window, resuming where it stopped.
+// The install wizard: eight steps in one window, resuming where it stopped.
 import { createRoot } from "react-dom/client";
 import { useCallback, useEffect, useState } from "react";
 import type { ShellInfo, WizardStep } from "../shared/types";
@@ -7,20 +7,17 @@ import "./styles.css";
 import { ALL_PACKS, ALL_PARTS, WIZARD_STEPS, stepIndex } from "./data";
 import { GlyphCurrent, GlyphDone, GlyphPending } from "./icons";
 import { markUrl } from "./ui";
-import { AiStep, DoneStep, GithubStep, ImportStep, InstallStep, LicenseStep, LocationStep, PartsStep, WelcomeStep } from "./steps";
+import { AiStep, DoneStep, GithubStep, InstallStep, LicenseStep, LocationStep, PartsStep, WelcomeStep } from "./steps";
 
 const api = window.vidlift;
 
 function draftFrom(info: ShellInfo): Draft {
   const s = info.state;
-  const past = (step: WizardStep) => stepIndex(s.step) > stepIndex(step);
   return {
     licenseKey: s.licenseKey ?? "",
     githubLogin: s.githubLogin,
     license: null,
     installDir: s.installDir ?? info.defaultInstallDir,
-    oldChoice: s.oldFolder ? "old" : past("import") ? "first" : null,
-    oldFolder: s.oldFolder,
     parts: s.parts ?? [...ALL_PARTS],
     packs: s.packs ?? [...ALL_PACKS],
     keys: {},
@@ -74,7 +71,7 @@ function App() {
       setInfo(i);
       setDraft(draftFrom(i));
       // A step this version no longer has (an older shell.json) starts over.
-      const saved = (i.state.step as string) === "keys" ? "ai" : i.state.step;
+      const saved = ["keys", "import"].includes(i.state.step as string) ? "ai" : i.state.step;
       setStep(i.state.setupDone ? "done" : stepIndex(saved) >= 0 ? saved : "welcome");
     });
   }, []);
@@ -92,7 +89,6 @@ function App() {
         licenseKey: nd.licenseKey || null,
         githubLogin: nd.githubLogin,
         installDir: nd.installDir,
-        oldFolder: nd.oldChoice === "old" ? nd.oldFolder : null,
         parts: nd.parts,
         packs: nd.packs,
         voice: nd.voice,
@@ -117,7 +113,6 @@ function App() {
         {step === "license" && <LicenseStep {...props} />}
         {step === "github" && <GithubStep {...props} />}
         {step === "location" && <LocationStep {...props} />}
-        {step === "import" && <ImportStep {...props} />}
         {step === "ai" && <AiStep {...props} />}
         {step === "parts" && <PartsStep {...props} />}
         {step === "install" && <InstallStep {...props} />}
