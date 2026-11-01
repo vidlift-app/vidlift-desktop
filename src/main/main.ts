@@ -65,7 +65,7 @@ if (process.platform === "win32") app.setAppUserModelId("io.vidlift.app");
 const RENDERER = path.join(__dirname, "..", "renderer");
 const PRELOAD = path.join(__dirname, "..", "preload", "preload.js");
 const ASSETS = path.join(app.getAppPath(), "build");
-const BACKGROUND = "#0b0b0b";
+const BACKGROUND = "#1a1a1b";
 const GB = 1024 ** 3;
 
 let wizardWin: BrowserWindow | null = null;
