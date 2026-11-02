@@ -21,11 +21,25 @@ export async function healthy(url: string, timeoutMs = 2000): Promise<boolean> {
 
 export const apiHealthy = (): Promise<boolean> => healthy(`http://127.0.0.1:${API_PORT}/api/health`);
 
-/** The dashboard's address: vite on :5173 when it runs (members' installs run
- * `vite preview`), else the API serves the built dashboard itself. Same as
- * tools/vidlift.py's `url`. */
+/** Whether VidLift answers at this address, not merely something. :5173 is
+ * Vite's default, so a member's own web project opened in VidLift's window
+ * (2026-11-03). Only VidLift's health route, through the dashboard's proxy,
+ * says where its data is; a site's catch-all page answers with HTML. */
+export async function isVidlift(base: string, timeoutMs = 2000): Promise<boolean> {
+  try {
+    const r = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(timeoutMs) });
+    const body = (await r.json()) as { data_dir?: unknown };
+    return r.ok && typeof body.data_dir === "string";
+  } catch {
+    return false;
+  }
+}
+
+/** The dashboard's address: vite on :5173 when VidLift's own runs there
+ * (members' installs run `vite preview`), else the API serves the built
+ * dashboard itself. Same as tools/vidlift.py's `url`. */
 export async function dashboardUrl(): Promise<string> {
-  if (await healthy(`http://127.0.0.1:${UI_PORT}/`)) return `http://localhost:${UI_PORT}/?window=app&shell=electron`;
+  if (await isVidlift(`http://127.0.0.1:${UI_PORT}`)) return `http://localhost:${UI_PORT}/?window=app&shell=electron`;
   return `http://127.0.0.1:${API_PORT}/?window=app&shell=electron`;
 }
 
