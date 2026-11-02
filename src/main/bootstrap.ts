@@ -390,7 +390,10 @@ export class Installer {
   private async restartServices(): Promise<void> {
     await postJson("/api/setup/restart", {});
     await sleep(3000);
-    await this.supervisor.waitHealthy(5 * 60_000);
+    // Fifteen minutes: the first start after the AI pack loads files the
+    // antivirus has not seen, and five stopped a slow PC's install with "took
+    // too long to start" and nothing else wrong (2026-11-03).
+    await this.supervisor.waitHealthy(15 * 60_000);
   }
 }
 
