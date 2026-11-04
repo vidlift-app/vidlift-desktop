@@ -2,7 +2,7 @@
   "name": "vidlift-desktop",
   "productName": "VidLift",
   "private": true,
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "VidLift's desktop app: its window, tray, install wizard and updater.",
   "author": "VidLift",
   "main": "dist/main/main.js",
