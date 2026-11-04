@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import { after, test } from "node:test";
 import type { AddressInfo } from "node:net";
+import path from "node:path";
 import { OtherVidLift, sameDir, userDirAt } from "./supervisor";
 
 const servers: Server[] = [];
@@ -40,6 +41,12 @@ test("folders compare as the platform names them", () => {
 });
 
 test("says where the other one runs from", () => {
-  assert.match(new OtherVidLift("D:\\Old\\VidLift\\user").message, /from D:\\Old\\VidLift\./);
-  assert.match(new OtherVidLift("D:\\CODING\\VidLift").message, /from D:\\CODING\\VidLift\./);
+  // In this computer's own path style: the folder comes from the other
+  // VidLift on the same machine (a Mac read "D:\Old\VidLift\user" as one
+  // name, and the installers' build failed on 2026-11-05).
+  const root = path.sep === "\\" ? "D:\\" : "/";
+  const old = path.join(root, "Old", "VidLift");
+  assert.ok(new OtherVidLift(path.join(old, "user")).message.includes(`from ${old}.`));
+  const dev = path.join(root, "CODING", "VidLift");
+  assert.ok(new OtherVidLift(dev).message.includes(`from ${dev}.`));
 });
