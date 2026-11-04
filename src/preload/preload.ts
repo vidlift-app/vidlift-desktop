@@ -45,6 +45,7 @@ const api: VidLiftApi = {
   chooseFolder: (title, start) => call("chooseFolder", title, start),
   checkFolder: (path) => call("checkFolder", path),
   install: (plan) => call("install", plan),
+  saveKeys: (keys) => call("saveKeys", keys),
   onProgress,
   finish: (opts) => call("finish", opts),
   testKey: (env, value) => call("testKey", env, value),

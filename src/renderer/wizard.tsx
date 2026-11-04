@@ -20,7 +20,7 @@ function draftFrom(info: ShellInfo): Draft {
     installDir: s.installDir ?? info.defaultInstallDir,
     parts: s.parts ?? [...ALL_PARTS],
     packs: s.packs ?? [...ALL_PACKS],
-    keys: {},
+    keys: { ...(info.keys ?? {}) },
     voice: s.voice ?? { mode: "local" },
     crashReports: s.crashReports ?? true,
     openAtLogin: s.openAtLogin ?? false,
@@ -93,6 +93,10 @@ function App() {
         packs: nd.packs,
         voice: nd.voice,
       });
+      // The keys, kept by the shell until the install writes them (a wizard
+      // closed and opened again had lost them). Not from the install on: it
+      // has written them, and the shell's copy is gone.
+      if (next !== "install" && next !== "done") void api.saveKeys(nd.keys);
     },
     [draft],
   );

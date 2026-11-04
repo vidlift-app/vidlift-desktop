@@ -35,6 +35,43 @@ export async function isVidlift(base: string, timeoutMs = 2000): Promise<boolean
   }
 }
 
+/** The user folder of the VidLift answering at `base` (its /api/setup), or
+ * null when nothing answers or it does not say (an older core). */
+export async function userDirAt(base: string, timeoutMs = 15_000): Promise<string | null> {
+  try {
+    const r = await fetch(`${base}/api/setup`, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!r.ok) return null;
+    const v = (await r.json()) as { user_dir?: unknown };
+    return typeof v.user_dir === "string" && v.user_dir ? v.user_dir : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Two folders the same, as Windows and a Mac compare names (any case). */
+export function sameDir(a: string, b: string, platform: string = process.platform): boolean {
+  const norm = (p: string) => {
+    const r = path.resolve(p).replace(/[\\/]+$/, "");
+    return platform === "linux" ? r : r.toLowerCase();
+  };
+  return norm(a) === norm(b);
+}
+
+/** Another VidLift holds the port: an older install left running in the
+ * background, or a developer's copy (2026-11-04). Taking it for this one sent
+ * the install's parts to it and opened its dashboard, whose settings have
+ * none of what the wizard just saved here. */
+export class OtherVidLift extends Error {
+  constructor(public readonly userDir: string) {
+    // An install's user folder is <install>/user; a developer's copy is itself.
+    const where = path.basename(userDir).toLowerCase() === "user" ? path.dirname(userDir) : userDir;
+    super(
+      `Another VidLift is already running, from ${where}. ` +
+        "Quit it from its icon by the clock (on a Mac, in the menu bar), and this one starts.",
+    );
+  }
+}
+
 /** The dashboard's address: vite on :5173 when VidLift's own runs there
  * (members' installs run `vite preview`), else the API serves the built
  * dashboard itself. Same as tools/vidlift.py's `url`. */
@@ -84,7 +121,12 @@ export class Supervisor {
 
   async start(log?: (line: string) => void): Promise<void> {
     if (this.running) return;
-    if (await apiHealthy()) return; // already up (a previous shell left it running)
+    if (await apiHealthy()) {
+      // Already up: a previous shell left it running, if it is this install.
+      const theirs = await userDirAt(`http://127.0.0.1:${API_PORT}`);
+      if (theirs && !sameDir(theirs, this.l.user)) throw new OtherVidLift(theirs);
+      return;
+    }
     await this.restoreInterrupted();
     const runtime = this.l.runtime;
     const env: NodeJS.ProcessEnv = {

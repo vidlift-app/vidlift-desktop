@@ -115,6 +115,32 @@ export async function loadLicense(): Promise<{ license: string; signature: strin
   }
 }
 
+/** The API keys typed on "Set up AI", kept like the licence (OS-encrypted on
+ * Windows, this user only) until the install writes them into user/.env
+ * (2026-11-04: they lived only in the wizard's page, so a wizard closed and
+ * reopened, or an install run again, went on with none and Settings › API
+ * keys came up empty). Never in shell.json. */
+export async function saveKeys(keys: Record<string, string> | null): Promise<void> {
+  const kept = Object.fromEntries(Object.entries(keys ?? {}).filter(([k, v]) => /^[A-Z][A-Z0-9_]*$/.test(k) && !!v?.trim()));
+  if (!Object.keys(kept).length) {
+    await fs.rm(file("keys.bin"), { force: true });
+    return;
+  }
+  await fs.mkdir(app.getPath("userData"), { recursive: true });
+  await fs.writeFile(file("keys.bin"), seal(JSON.stringify(kept)), { mode: 0o600 });
+}
+
+export async function loadKeys(): Promise<Record<string, string>> {
+  try {
+    const text = unseal(await fs.readFile(file("keys.bin")));
+    if (text === null) return {};
+    const v = JSON.parse(text) as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(v).filter((e): e is [string, string] => typeof e[1] === "string"));
+  } catch {
+    return {};
+  }
+}
+
 /** Where VidLift goes unless the member picks another folder: the app data
  * folder of this account, which needs no administrator. */
 export function defaultInstallDir(): string {

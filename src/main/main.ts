@@ -715,15 +715,17 @@ function handle(name: string, fn: (e: IpcMainInvokeEvent, ...args: any[]) => unk
 }
 
 function registerIpc(): void {
-  handle("info", (): ShellInfo => ({
+  handle("info", async (): Promise<ShellInfo> => ({
     platform: process.platform as ShellInfo["platform"],
     arch: process.arch,
     version: app.getVersion(),
     defaultInstallDir: state.defaultInstallDir(),
     state: { ...state.load() },
+    keys: await state.loadKeys(),
   }));
 
   handle("saveState", (_e, patch: Partial<ShellState>) => state.save(patch ?? {}));
+  handle("saveKeys", (_e, keys: Record<string, string>) => state.saveKeys(keys ?? {}));
 
   // The window buttons follow the page's theme, which can differ from the OS's.
   handle("windowTheme", (e, theme: string) => {
@@ -848,7 +850,9 @@ async function install(sender: WebContents, plan: InstallPlan): Promise<void> {
     .run({
       parts: plan.parts ?? [],
       packs: plan.packs ?? [],
-      keys: plan.keys ?? {},
+      // The page's keys, over the ones kept for it (a page that came back
+      // after a restart may hold none; "Do this later" cleared both).
+      keys: { ...(await state.loadKeys()), ...(plan.keys ?? {}) },
       voice: plan.voice ?? { mode: "local" },
     })
     .finally(() => {

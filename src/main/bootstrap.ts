@@ -15,6 +15,7 @@ import extract from "extract-zip";
 import { download, fetchCatalog, latest, NoAccess } from "./catalog";
 import { API_PORT, REQUIRED_PARTS, UV_ASSETS, UV_VERSION } from "./constants";
 import { writeLicense, machineId } from "./license";
+import { saveKeys } from "./state";
 import { describeHardware, type SetupStatus } from "./hardware";
 import type { Supervisor } from "./supervisor";
 import { voiceDefault } from "./voice";
@@ -155,6 +156,8 @@ export class Installer {
     const login = (await this.whoAmI()) ?? null;
     await writeJson(path.join(this.l.user, "data", "github.json"), { token: this.token, login }, 0o600);
     if (Object.keys(plan.keys).length) await mergeEnv(path.join(this.l.user, ".env"), plan.keys);
+    // In the install's own .env now: the shell's copy goes.
+    await saveKeys(null).catch(() => undefined);
     // Who narrates new videos (Settings › Preferences shows and changes it).
     await writeJson(path.join(this.l.user, "data", "voice-default.json"), voiceDefault(plan.voice));
     this.finished("prepare");
@@ -231,8 +234,15 @@ export class Installer {
     this.begin("python", "Installing VidLift's Python (a few minutes the first time)");
     await writeLicense(this.l.user, this.licenseKey);
     await machineId(this.l.user);
-    await this.supervisor.start(this.log);
+    // Another VidLift on the port says so on the page and is waited out.
+    await this.again("Starting VidLift", () => this.supervisor.start(this.log), 12);
     await this.supervisor.waitHealthy(30 * 60_000);
+    // The licence, when the shell no longer had the server's signed answer
+    // (it was lost with the shell's copy): the install asks for it itself.
+    if (this.licenseKey && !(await exists(path.join(this.l.user, "data", "license.json")))) {
+      const r = await postJson<{ state?: string }>("/api/license/activate", { key: this.licenseKey });
+      this.log(r ? `licence activated by the install (${r.state ?? "?"})` : "! the install could not activate the licence");
+    }
     this.report({ hardware: describeHardware(await getJson<SetupStatus>("/api/setup")) });
     this.finished("python");
   }

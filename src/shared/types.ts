@@ -8,6 +8,8 @@ export interface ShellInfo {
   version: string;
   defaultInstallDir: string;
   state: ShellState;
+  /** The API keys typed so far on "Set up AI" and not yet installed. */
+  keys: Record<string, string>;
 }
 
 /** Kept in Electron's userData folder (shell.json): where VidLift is installed
@@ -128,6 +130,8 @@ export interface VidLiftApi {
   chooseFolder(title: string, start?: string): Promise<string | null>;
   checkFolder(path: string): Promise<FolderCheck>;
   install(plan: InstallPlan): Promise<void>;
+  /** Keep the keys typed on "Set up AI" until the install writes them. */
+  saveKeys(keys: Record<string, string>): Promise<void>;
   onProgress(cb: (p: InstallProgress) => void): () => void;
   finish(opts: { crashReports: boolean; openAtLogin: boolean }): Promise<void>;
   /** Ask the key's provider whether it works. Never rejects for a bad key. */
