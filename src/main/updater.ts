@@ -121,6 +121,24 @@ export function readChannel(installDir: string): Channel {
   }
 }
 
+/** Settings › Updates › "Install automatically" (user/data/update-auto.json),
+ * read exactly as the core reads it (`updates.auto_install`): on unless the
+ * member turned it off after 2026-10-27 (form 2). The shell updater used to
+ * ignore it, downloading and installing anyway (a member's security review,
+ * 2026-11-13). */
+export function readAuto(installDir: string): boolean {
+  try {
+    const raw = JSON.parse(readFileSync(path.join(installDir, "user", "data", "update-auto.json"), "utf-8")) as {
+      on?: boolean;
+      form?: number;
+    };
+    if (!raw || typeof raw !== "object" || (raw.form ?? 1) < 2) return true;
+    return Boolean(raw.on);
+  } catch {
+    return true;
+  }
+}
+
 /** The GitHub token the core keeps (user/data/github.json). */
 export function readToken(installDir: string): string | null {
   try {
@@ -264,6 +282,7 @@ export class ShellUpdater {
   private async checkOnce(): Promise<void> {
     const install = this.o.installDir();
     if (!install) return this.log("no install yet; skipped");
+    if (!readAuto(install)) return this.log("automatic updates are off (Settings › Updates); skipped");
     if (!platformKey(this.platform)) return this.log(`no installer for ${this.platform}; skipped`);
     if (await updatesPaused()) return this.log("updates are paused by the licence; skipped");
     const token = readToken(install) ?? (await this.o.fallbackToken?.()) ?? null;
@@ -298,6 +317,11 @@ export class ShellUpdater {
   async applyAtQuit(): Promise<boolean> {
     const p = this.pending;
     if (!p) return false;
+    const install = this.o.installDir();
+    if (install && !readAuto(install)) {
+      this.log(`${p.version} is downloaded, but automatic updates are off; it waits`);
+      return false;
+    }
     if (this.busy) {
       this.log("a download is still running; the update waits for the next quit");
       return false;

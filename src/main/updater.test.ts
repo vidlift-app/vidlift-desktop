@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { choose, type DesktopEntry, parseSemver, pickDesktop, platformKey, readChannel, readToken, semverNewer } from "./updater";
+import { choose, type DesktopEntry, parseSemver, pickDesktop, platformKey, readAuto, readChannel, readToken, semverNewer } from "./updater";
 
 test("semverNewer compares major, minor and patch as numbers", () => {
   assert.equal(semverNewer("1.0.10", "1.0.9"), true);
@@ -79,4 +79,17 @@ test("readChannel and readToken from the install's user/data", () => {
   assert.equal(readToken(dir), "gho_x");
   writeFileSync(path.join(dir, "user", "data", "update-channel.json"), JSON.stringify({ channel: "fixes" }));
   assert.equal(readChannel(dir), "stable");
+});
+
+test("readAuto follows Settings > Updates, as the core reads it", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "vl-auto-"));
+  assert.equal(readAuto(dir), true); // nothing saved: on
+  mkdirSync(path.join(dir, "user", "data"), { recursive: true });
+  const file = path.join(dir, "user", "data", "update-auto.json");
+  writeFileSync(file, JSON.stringify({ on: false }));
+  assert.equal(readAuto(dir), true); // saved before automatic updates went on for everyone
+  writeFileSync(file, JSON.stringify({ on: false, form: 2 }));
+  assert.equal(readAuto(dir), false); // the member's own choice
+  writeFileSync(file, JSON.stringify({ on: true, form: 2 }));
+  assert.equal(readAuto(dir), true);
 });
