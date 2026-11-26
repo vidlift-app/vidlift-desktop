@@ -58,6 +58,26 @@ async function readOrMake(f: string): Promise<string> {
   return id;
 }
 
+/** The licence key of the GitHub account signed in (license.vidlift.io
+ * /api/license/lookup, 2026-11-26): the member does not type it. null when no
+ * licence is that account's; the message when the server could not say. */
+export async function lookupKey(token: string): Promise<{ key: string | null; error?: string; message?: string }> {
+  let r: Response;
+  try {
+    r = await fetch(`${LICENSE_SERVER}/api/license/lookup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": "VidLift-Desktop" },
+      body: JSON.stringify({ github_token: token }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch {
+    return { key: null, error: "unreachable", message: "The licence server didn't answer. Check the internet connection and try again." };
+  }
+  const body = (await r.json().catch(() => ({}))) as Record<string, string>;
+  if (r.ok && typeof body.key === "string") return { key: body.key };
+  return { key: null, error: body.error || `http_${r.status}`, message: body.message };
+}
+
 export interface Signed {
   license: string;
   signature: string;

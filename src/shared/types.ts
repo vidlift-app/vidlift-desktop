@@ -58,6 +58,8 @@ export interface LicenseResult {
   name?: string;
   skool?: string;
   updatesUntil?: string | null;
+  /** The key activated: typed, or found for the GitHub account (2026-11-26). */
+  key?: string;
   /** Server codes (contracts.md §2), plus the shell's own: "no_token" (sign in
    * first), "unreachable", "bad_signature", "no_release_access" (the GitHub
    * invite is not accepted yet). */

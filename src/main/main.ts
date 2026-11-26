@@ -34,7 +34,7 @@ import { API_PORT, SKIP_LICENSE, UI_PORT } from "./constants";
 import { devicePoll, deviceStart } from "./github";
 import { normalizeKey } from "./key";
 import { testKey } from "./keycheck";
-import { activate } from "./license";
+import { activate, lookupKey } from "./license";
 import * as state from "./state";
 import { apiHealthy, dashboardUrl, Supervisor } from "./supervisor";
 import { ShellUpdater } from "./updater";
@@ -796,11 +796,20 @@ function registerIpc(): void {
 }
 
 async function activateLicense(raw: string): Promise<LicenseResult> {
+  token ??= await state.loadToken();
+  // No key typed: the one the licence server has for this GitHub account
+  // (the owner, 2026-11-26: members had to type a key the server already knew).
+  if (!raw.trim() && token && !SKIP_LICENSE) {
+    const found = await lookupKey(token);
+    if (!found.key) {
+      return { ok: false, error: found.error === "key_unknown" ? "key_not_found" : found.error, message: found.message };
+    }
+    raw = found.key;
+  }
   const key = normalizeKey(raw);
   if (!key) {
     return { ok: false, error: "bad_request", message: "That isn't a licence key. It looks like VL-XXXX-XXXX-XXXX-XXXX." };
   }
-  token ??= await state.loadToken();
   if (!token) return { ok: false, error: "no_token", message: "Sign in with GitHub first." };
   let result: LicenseResult;
   if (SKIP_LICENSE) {
@@ -817,7 +826,7 @@ async function activateLicense(raw: string): Promise<LicenseResult> {
     return { ok: false, error: "unreachable", message: e instanceof Error ? e.message : String(e) };
   }
   await state.save({ licenseKey: key });
-  return result;
+  return { ...result, key };
 }
 
 async function install(sender: WebContents, plan: InstallPlan): Promise<void> {

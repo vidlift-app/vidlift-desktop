@@ -2,8 +2,8 @@ import type { VoiceEngine, WizardStep } from "../shared/types";
 
 export const WIZARD_STEPS: { id: WizardStep; label: string }[] = [
   { id: "welcome", label: "Welcome" },
-  { id: "license", label: "Licence" },
   { id: "github", label: "GitHub" },
+  { id: "license", label: "Licence" },
   { id: "location", label: "Location" },
   { id: "ai", label: "Set up AI" },
   { id: "parts", label: "Parts" },

@@ -109,7 +109,7 @@ export function WelcomeStep({ go }: StepProps) {
       title="Welcome to VidLift"
       sub="Setup takes 15 to 30 minutes and needs the internet."
       right={
-        <Button variant="primary" onClick={() => go("license")}>
+        <Button variant="primary" onClick={() => go("github")}>
           Start
         </Button>
       }
@@ -143,17 +143,28 @@ export function WelcomeStep({ go }: StepProps) {
 export function LicenseStep({ draft, update, go, back }: StepProps) {
   const key = draft.licenseKey;
   const ok = keyComplete(key);
-  const next = () => {
-    if (!ok) return;
-    // A different key means the last check no longer counts.
-    go("github", { licenseKey: key });
+  const [checking, setChecking] = useState(false);
+  const res = draft.license && draft.license.key === key ? draft.license : null;
+  const next = async () => {
+    if (!ok || checking) return;
+    if (res?.ok && res.status !== "ended") return go("location");
+    setChecking(true);
+    let r: LicenseResult;
+    try {
+      r = await api.activateLicense(key);
+    } catch (e) {
+      r = { ok: false, error: "unreachable", message: errText(e) };
+    }
+    setChecking(false);
+    update({ license: { ...r, key: r.key ?? key } });
+    if (r.ok && r.status !== "ended") go("location", { licenseKey: key, license: { ...r, key } });
   };
   return (
     <Page
       title="Enter your licence key"
       left={<BackButton onClick={back} />}
       right={
-        <Button variant="primary" disabled={!ok} onClick={next}>
+        <Button variant="primary" disabled={!ok || checking} onClick={() => void next()}>
           Continue
         </Button>
       }
@@ -171,13 +182,15 @@ export function LicenseStep({ draft, update, go, back }: StepProps) {
             const v = formatKey(e.target.value);
             update({ licenseKey: v, license: v === key ? draft.license : null });
           }}
-          onKeyDown={(e) => e.key === "Enter" && next()}
+          onKeyDown={(e) => e.key === "Enter" && void next()}
         />
         <div>
           <button type="button" className="btn-link" onClick={() => void api.openExternal(URLS.skool)}>
             Where's my key?
           </button>
         </div>
+        {checking && <WaitLine>Checking your licence</WaitLine>}
+        {res && !checking && <LicenseCard res={res} onRetry={() => void next()} onOtherAccount={() => go("github")} />}
       </div>
     </Page>
   );
@@ -264,7 +277,7 @@ export function GithubStep({ draft, update, go, back }: StepProps) {
         res = { ok: false, error: "unreachable", message: errText(e) };
       }
       if (cancelled) return;
-      update({ license: res });
+      update(res.key ? { license: res, licenseKey: res.key } : { license: res });
       setPhase({ k: "result", login: phase.login, res });
     })();
     return () => {
@@ -273,6 +286,8 @@ export function GithubStep({ draft, update, go, back }: StepProps) {
   }, [phase, draft.licenseKey, update]);
 
   const active = phase.k === "result" && phase.res.ok && phase.res.status !== "ended";
+  // No licence on this account, or the key typed was refused: the key by hand.
+  const byHand = phase.k === "result" && !phase.res.ok && ["key_not_found", "key_unknown", "bad_request"].includes(phase.res.error ?? "");
   const login = phase.k === "checking" || phase.k === "result" ? phase.login : null;
 
   const recheck = () => {
@@ -289,7 +304,11 @@ export function GithubStep({ draft, update, go, back }: StepProps) {
       </Button>
     );
   } else {
-    primary = (
+    primary = byHand ? (
+      <Button variant="primary" onClick={() => go("license", { license: null })}>
+        Enter my key
+      </Button>
+    ) : (
       <Button variant="primary" disabled={!active} onClick={() => go("location")}>
         Continue
       </Button>
@@ -353,7 +372,15 @@ export function GithubStep({ draft, update, go, back }: StepProps) {
 
         {phase.k === "checking" && <WaitLine>Checking your licence</WaitLine>}
 
-        {phase.k === "result" && <LicenseCard res={phase.res} onRetry={recheck} onOtherAccount={() => void start()} />}
+        {phase.k === "result" && !byHand && <LicenseCard res={phase.res} onRetry={recheck} onOtherAccount={() => void start()} />}
+        {byHand && (
+          <div className="card warn">
+            <div className="card-title lead tone-warn">
+              <IconAlert />
+              <span className="selectable">{phase.k === "result" && phase.res.message ? phase.res.message : "No licence found for this GitHub account."}</span>
+            </div>
+          </div>
+        )}
       </div>
     </Page>
   );
